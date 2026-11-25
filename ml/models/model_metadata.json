@@ -1,0 +1,24 @@
+{
+  "model": "SVM",
+  "version": "svm_v1",
+  "kernel": "rbf",
+  "best_params": {
+    "C": 0.1,
+    "gamma": "scale",
+    "kernel": "rbf"
+  },
+  "classes": [
+    "Cotton",
+    "Nylon",
+    "Polyester",
+    "Silk"
+  ],
+  "wavelength_range": [
+    900.0,
+    1700.0
+  ],
+  "num_wavelengths": 41,
+  "accuracy": 1.0,
+  "data_leakage_prevented": true,
+  "split_strategy": "GroupShuffleSplit by Physical_Sample_ID"
+}

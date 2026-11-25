@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fabric Identification System | Spectroscopy & ML</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- System Header -->
+        <header class="app-header">
+            <div class="header-branding">
+                <div class="logo-mark">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M2 12h20M7 5l5 14M17 5l-5 14"/>
+                        <circle cx="12" cy="12" r="9"/>
+                    </svg>
+                </div>
+                <div>
+                    <h1>FABRIC IDENTIFICATION SYSTEM</h1>
+                    <p class="subtitle">Spectroscopy-Based Material Classification</p>
+                </div>
+            </div>
+
+            <!-- Top Controls: Settings -->
+            <div class="header-actions">
+                <div class="mode-pill live" id="modePill">
+                    <span class="mode-indicator" id="modeIndicator"></span>
+                    <span id="modeText">LIVE HARDWARE</span>
+                </div>
+                <button class="btn btn-icon" id="btnConfigModal" title="Firebase & Backend Configuration">
+                    ⚙ Settings
+                </button>
+            </div>
+        </header>
+
+        <!-- System Status Bar -->
+        <section class="status-bar-container">
+            <div class="status-pill" id="statusEsp32">
+                <span class="status-dot"></span>
+                <span class="status-label">ESP32</span>
+                <span class="status-val">Checking...</span>
+            </div>
+            <div class="status-pill" id="statusSensor">
+                <span class="status-dot"></span>
+                <span class="status-label">Sensor</span>
+                <span class="status-val">Checking...</span>
+            </div>
+            <div class="status-pill" id="statusFirebase">
+                <span class="status-dot"></span>
+                <span class="status-label">Firebase</span>
+                <span class="status-val">Checking...</span>
+            </div>
+            <div class="status-pill" id="statusML">
+                <span class="status-dot"></span>
+                <span class="status-label">ML Backend</span>
+                <span class="status-val">Checking...</span>
+            </div>
+        </section>
+
+        <!-- Main Dashboard Grid -->
+        <main class="dashboard-grid">
+            <!-- Left Column: Live Spectrum Graph -->
+            <section class="card graph-card">
+                <div class="card-header">
+                    <div class="card-title-group">
+                        <h2>LIVE SPECTRUM</h2>
+                        <span class="badge" id="graphPointsCount">0 Wavelengths</span>
+                    </div>
+                    <div class="graph-metrics">
+                        <span class="metric-item">Range: <strong id="metricRange">900 - 1700 nm</strong></span>
+                        <span class="metric-item">Peak: <strong id="metricPeak">--</strong></span>
+                        <span class="metric-item">Max Intensity: <strong id="metricMaxIntensity">--</strong></span>
+                    </div>
+                </div>
+                <div class="chart-wrapper">
+                    <canvas id="spectrumChart"></canvas>
+                </div>
+            </section>
+
+            <!-- Right Column: Fabric Identification Result Card -->
+            <section class="card result-card">
+                <div class="card-header">
+                    <h2>FABRIC IDENTIFICATION</h2>
+                    <span class="status-tag" id="predictionStatus">WAITING</span>
+                </div>
+
+                <div class="result-body">
+                    <div class="result-display-box" id="resultDisplayBox">
+                        <div class="result-sub">PREDICTED FABRIC</div>
+                        <div class="result-fabric-name" id="predictedFabric">--</div>
+                        <div class="confidence-container">
+                            <div class="confidence-label">
+                                <span>Confidence</span>
+                                <strong id="confidenceText">0.0%</strong>
+                            </div>
+                            <div class="confidence-bar-bg">
+                                <div class="confidence-bar-fill" id="confidenceBar"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Meta Information Table -->
+                    <div class="result-meta-grid">
+                        <div class="meta-item">
+                            <span class="meta-label">Scan ID</span>
+                            <span class="meta-value font-mono" id="metaScanId">--</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">Timestamp</span>
+                            <span class="meta-value font-mono" id="metaTimestamp">--</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">Model Version</span>
+                            <span class="meta-value font-mono" id="metaModelVersion">--</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">Processing Status</span>
+                            <span class="meta-value" id="metaStatus">Idle</span>
+                        </div>
+                    </div>
+
+                    <!-- Quick Predict Trigger -->
+                    <div class="prediction-actions">
+                        <button class="btn btn-primary w-100" id="btnRequestPrediction">
+                            🔍 Request SVM Prediction
+                        </button>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Bottom Grid: Dataset Capture & Raw Sensor Data Table -->
+        <section class="bottom-grid">
+            <!-- Capture & Dataset Management Card -->
+            <div class="card capture-card">
+                <div class="card-header">
+                    <h2>DATASET CAPTURE & LABELING</h2>
+                    <span class="badge" id="captureCounterBadge">0 Samples Captured</span>
+                </div>
+                <div class="capture-controls">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="fabricClassSelect">Fabric Class Label</label>
+                            <div class="input-with-button">
+                                <select id="fabricClassSelect" class="form-select">
+                                    <option value="Cotton">Cotton</option>
+                                    <option value="Nylon">Nylon</option>
+                                    <option value="Polyester">Polyester</option>
+                                    <option value="Silk">Silk</option>
+                                </select>
+                                <button class="btn btn-outline-sm" id="btnAddCustomClass" title="Add new fabric class">+ Add Class</button>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="physicalSampleId" title="Physical piece identifier prevents data leakage during SVM training">
+                                Physical Fabric Sample ID
+                            </label>
+                            <input type="text" id="physicalSampleId" class="form-input" placeholder="e.g. SAMPLE_COTTON_01" value="SAMPLE_COTTON_01">
+                            <small class="helper-text">Keeps replicate scans of the same cloth together during Train/Test split</small>
+                        </div>
+                    </div>
+
+                    <div class="action-buttons-group">
+                        <button class="btn btn-success" id="btnStartCapture">
+                            ▶ Start Capture
+                        </button>
+                        <button class="btn btn-danger" id="btnStopCapture" disabled>
+                            ⏹ Stop Capture
+                        </button>
+                        <button class="btn btn-secondary" id="btnDownloadLongCSV" disabled>
+                            📥 Download CSV (Long)
+                        </button>
+                        <button class="btn btn-secondary" id="btnDownloadWideCSV" disabled>
+                            📥 Download CSV (Wide / ML)
+                        </button>
+                        <button class="btn btn-outline" id="btnClearCapture" disabled>
+                            🗑 Clear Buffer
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Raw Sensor Data Table Card -->
+            <div class="card table-card">
+                <div class="card-header">
+                    <div class="card-title-group">
+                        <h2>RAW SENSOR DATA</h2>
+                        <span class="badge" id="tableRowCount">0 Bands</span>
+                    </div>
+                    <div class="table-actions">
+                        <input type="text" id="tableFilterInput" class="form-input-sm" placeholder="Filter wavelength...">
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table class="data-table" id="rawDataTable">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Wavelength (nm)</th>
+                                <th>Intensity</th>
+                                <th>Relative %</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rawDataTableBody">
+                            <tr>
+                                <td colspan="4" class="empty-state">Waiting for real-time spectral data from ESP32 sensor...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Configuration Modal -->
+    <div class="modal-overlay" id="configModal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>System Configuration</h3>
+                <button class="btn-close" id="btnCloseConfig">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-hint">Configure Firebase Realtime Database and Python ML Backend endpoints. Stored locally in your browser.</p>
+                
+                <div class="form-group">
+                    <label for="cfgFirebaseUrl">Firebase Realtime Database URL</label>
+                    <input type="url" id="cfgFirebaseUrl" class="form-input" placeholder="https://your-project-id-default-rtdb.firebaseio.com">
+                </div>
+
+                <div class="form-group">
+                    <label for="cfgBackendUrl">Python ML Backend URL</label>
+                    <input type="url" id="cfgBackendUrl" class="form-input" placeholder="http://localhost:8000">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="btnCancelConfig">Cancel</button>
+                <button class="btn btn-primary" id="btnSaveConfig">Save Settings</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Scripts -->
+    <script src="js/firebase.js"></script>
+    <script src="js/chart.js"></script>
+    <script src="js/capture.js"></script>
+    <script src="js/dashboard.js"></script>
+</body>
+</html>
