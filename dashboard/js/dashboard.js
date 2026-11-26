@@ -37,6 +37,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const metaModelVersionEl = document.getElementById('metaModelVersion');
     const metaStatusEl = document.getElementById('metaStatus');
 
+    const matchedListEl = document.getElementById('matchedSamplesList');
+    const matchedCountEl = document.getElementById('matchedCountBadge');
+    const liveFeedBodyEl = document.getElementById('liveFeedBody');
+    const liveFeedCountEl = document.getElementById('liveFeedCount');
+
     const btnRequestPrediction = document.getElementById('btnRequestPrediction');
 
     // Config Modal Elements
@@ -157,7 +162,10 @@ document.addEventListener('DOMContentLoaded', () => {
             displayPrediction(scan.prediction);
         } else {
             resetPredictionDisplay(scan.status || 'raw');
-            autoTriggerBackendPrediction(scan);
+            // Only write prediction back to Firebase if the scan originated as raw
+            if (scan.status === 'raw') {
+                autoTriggerBackendPrediction(scan);
+            }
         }
     }
 
@@ -187,6 +195,56 @@ document.addEventListener('DOMContentLoaded', () => {
             resultBoxEl.className = 'result-display-box';
             resultBoxEl.classList.add(fabric.toLowerCase());
         }
+
+        // Render matched reference samples
+        renderMatchedSamples(pred.matched_samples || []);
+    }
+
+    function renderMatchedSamples(matches) {
+        if (!matchedListEl || !matchedCountEl) return;
+        matchedCountEl.textContent = `${matches.length} Matches`;
+
+        if (!matches || matches.length === 0) {
+            matchedListEl.innerHTML = '<div class="matched-empty">No reference samples matched yet.</div>';
+            return;
+        }
+
+        matchedListEl.innerHTML = matches.map(m => `
+            <div class="matched-item">
+                <div class="matched-item-left">
+                    <span class="font-mono">${m.sample_id}</span>
+                    <span class="fabric-pill">${m.fabric}</span>
+                </div>
+                <span class="matched-sim">${m.similarity.toFixed(1)}% match</span>
+            </div>
+        `).join('');
+    }
+
+    function renderLiveFeed(items) {
+        if (!liveFeedBodyEl || !liveFeedCountEl) return;
+        liveFeedCountEl.textContent = `${items.length} Scans`;
+
+        if (!items || items.length === 0) {
+            liveFeedBodyEl.innerHTML = '<tr><td colspan="6" class="empty-state">Waiting for live scans...</td></tr>';
+            return;
+        }
+
+        liveFeedBodyEl.innerHTML = items.map(item => {
+            const timeStr = item.timestamp ? new Date(item.timestamp).toLocaleTimeString() : '--';
+            const matchText = item.top_match && item.top_match.sample_id
+                ? `${item.top_match.sample_id} (${item.top_match.fabric}, ${item.top_match.similarity}%)`
+                : '--';
+            return `
+                <tr>
+                    <td>${timeStr}</td>
+                    <td><strong>${item.scan_id}</strong></td>
+                    <td><span class="fabric-pill">${item.fabric}</span></td>
+                    <td>${item.confidence.toFixed(1)}%</td>
+                    <td>${item.peak_wavelength ? item.peak_wavelength + ' nm' : '--'}</td>
+                    <td>${matchText}</td>
+                </tr>
+            `;
+        }).join('');
     }
 
     function resetPredictionDisplay(status) {
@@ -317,6 +375,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (scan && scan.scan_id && scan.scan_id !== lastBackendScanId && scan.wavelength) {
                     lastBackendScanId = scan.scan_id;
                     handleIncomingScan(scan);
+                }
+            }
+
+            // 3. Live Data Feed history
+            const feedRes = await fetch(`${backendUrl}/live-feed`);
+            if (feedRes.ok) {
+                const feedData = await feedRes.json();
+                if (feedData && Array.isArray(feedData.items)) {
+                    renderLiveFeed(feedData.items);
                 }
             }
         } catch (err) {

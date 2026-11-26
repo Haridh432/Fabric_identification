@@ -48,6 +48,7 @@ class FabricPredictor:
         wl_path = os.path.join(self.model_dir, "wavelengths.json")
         classes_path = os.path.join(self.model_dir, "class_names.json")
         meta_path = os.path.join(self.model_dir, "model_metadata.json")
+        ref_path = os.path.join(self.model_dir, "reference_samples.json")
 
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model file not found at {model_path}. Train model first with train.py.")
@@ -67,11 +68,50 @@ class FabricPredictor:
         else:
             self.metadata = {"version": "svm_v1", "model": "SVM"}
 
+        self.reference_samples = []
+        if os.path.exists(ref_path):
+            with open(ref_path, "r") as f:
+                self.reference_samples = json.load(f)
+
         # Initialize preprocessor with trained reference grid and fitted scaler
         self.preprocessor = SpectralPreprocessor(reference_wavelengths=self.wavelengths)
         self.preprocessor.scaler = self.scaler
         self.preprocessor.is_fitted = True
         self.is_loaded = True
+
+    def find_matched_samples(self, X_raw: np.ndarray, top_k: int = 3) -> List[Dict[str, Any]]:
+        """
+        Compute cosine similarity between the SNV-normalized input spectrum and
+        stored reference samples to return the top matching collected samples.
+        """
+        if not self.reference_samples:
+            return []
+
+        snv_in = self.preprocessor.snv.transform(X_raw)[0]
+        norm_in = np.linalg.norm(snv_in)
+        if norm_in < 1e-8:
+            return []
+
+        matches = []
+        for ref in self.reference_samples:
+            ref_vec = np.asarray(ref.get("snv_vector", []), dtype=np.float64)
+            if len(ref_vec) != len(snv_in):
+                continue
+            norm_ref = np.linalg.norm(ref_vec)
+            if norm_ref < 1e-8:
+                continue
+            cos_sim = float(np.dot(snv_in, ref_vec) / (norm_in * norm_ref))
+            # Map [-1, 1] -> [0, 100]%
+            sim_pct = round(max(0.0, min(100.0, (cos_sim + 1.0) * 50.0)), 1)
+            matches.append({
+                "sample_id": ref["sample_id"],
+                "fabric": ref["fabric"],
+                "physical_sample_id": ref.get("physical_sample_id", ""),
+                "similarity": sim_pct
+            })
+
+        matches.sort(key=lambda m: m["similarity"], reverse=True)
+        return matches[:top_k]
 
     def predict(self, 
                 wavelengths: List[float], 
@@ -112,11 +152,14 @@ class FabricPredictor:
             decision = self.model.decision_function(X_proc)
             confidence = round(float(min(99.9, max(50.0, 50.0 + np.max(np.abs(decision)) * 10.0))), 2)
 
+        matched = self.find_matched_samples(X, top_k=3)
+
         return {
             "scan_id": scan_id,
             "fabric": str(pred_class),
             "confidence": confidence,
-            "model_version": self.metadata.get("version", "svm_v1")
+            "model_version": self.metadata.get("version", "svm_v1"),
+            "matched_samples": matched
         }
 
 

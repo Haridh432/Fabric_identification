@@ -3,24 +3,27 @@
    ============================================================== */
 
 :root {
-    --bg-main: #0B0F19;
-    --bg-card: #111827;
-    --bg-card-hover: #162033;
-    --bg-input: #1F2937;
-    --border-color: #2D3748;
-    --border-focus: #3B82F6;
+    /* Warm Natural Textile & Fabric Lab Palette */
+    --bg-main: #F4EFE6;            /* Raw Unbleached Linen */
+    --bg-card: #FFFDF9;            /* Pure Cotton Ivory */
+    --bg-card-hover: #F9F5EC;      /* Soft Muslin */
+    --bg-input: #EFE9DC;           /* Woven Flax */
+    --bg-inset: #F7F2E8;           /* Warm Canvas */
+    --border-color: #DDD3C0;       /* Natural Thread Border */
+    --border-focus: #355884;       /* Indigo Dye */
     
-    --text-primary: #F9FAFB;
-    --text-secondary: #9CA3AF;
-    --text-muted: #6B7280;
+    --text-primary: #2B2520;       /* Deep Espresso Ink */
+    --text-strong: #181310;        /* Rich Charcoal */
+    --text-secondary: #635A50;     /* Warm Taupe */
+    --text-muted: #8A8073;         /* Muted Flax */
     
-    --accent-blue: #3B82F6;
-    --accent-blue-light: #60A5FA;
-    --accent-cyan: #06B6D4;
-    --accent-green: #10B981;
-    --accent-red: #EF4444;
-    --accent-amber: #F59E0B;
-    --accent-purple: #8B5CF6;
+    --accent-blue: #355884;        /* Natural Indigo / Denim */
+    --accent-blue-light: #4A71A3;  /* Chambray Blue */
+    --accent-cyan: #B85D43;        /* Terracotta Thread */
+    --accent-green: #3A7857;       /* Sage Botanical Dye */
+    --accent-red: #B9443A;         /* Madder Root Red */
+    --accent-amber: #C48729;       /* Goldenrod / Raw Silk */
+    --accent-purple: #785A8A;      /* Mulberry Silk */
 
     --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     --font-mono: 'JetBrains Mono', Consolas, Monaco, monospace;
@@ -29,9 +32,9 @@
     --radius-md: 10px;
     --radius-lg: 14px;
 
-    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.25);
-    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
-    --shadow-glow: 0 0 20px rgba(59, 130, 246, 0.15);
+    --shadow-sm: 0 1px 3px rgba(43, 37, 32, 0.06);
+    --shadow-md: 0 4px 14px rgba(43, 37, 32, 0.07);
+    --shadow-glow: 0 4px 20px rgba(53, 88, 132, 0.09);
 }
 
 * {
@@ -42,6 +45,8 @@
 
 body {
     background-color: var(--bg-main);
+    background-image: radial-gradient(rgba(138, 128, 115, 0.18) 1px, transparent 0);
+    background-size: 18px 18px;
     color: var(--text-primary);
     font-family: var(--font-sans);
     line-height: 1.5;
@@ -98,7 +103,7 @@ body {
     font-size: 1.25rem;
     font-weight: 700;
     letter-spacing: 0.05em;
-    color: #FFFFFF;
+    color: var(--text-strong);
 }
 
 .subtitle {
@@ -317,7 +322,7 @@ body {
    RESULT CARD
    ============================================================== */
 .result-card {
-    background: linear-gradient(180deg, var(--bg-card) 0%, rgba(17, 24, 39, 0.8) 100%);
+    background: var(--bg-card);
     box-shadow: var(--shadow-glow);
 }
 
@@ -356,7 +361,7 @@ body {
     font-size: 2.25rem;
     font-weight: 800;
     letter-spacing: 0.04em;
-    color: #FFFFFF;
+    color: var(--text-strong);
     text-transform: uppercase;
     min-height: 54px;
     display: flex;
@@ -378,7 +383,7 @@ body {
 
 .confidence-bar-bg {
     height: 8px;
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--border-color);
     border-radius: 9999px;
     overflow: hidden;
 }
@@ -395,7 +400,7 @@ body {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 0.75rem;
-    background: rgba(0, 0, 0, 0.2);
+    background: var(--bg-inset);
     padding: 0.85rem;
     border-radius: var(--radius-md);
     border: 1px solid var(--border-color);
@@ -754,5 +759,158 @@ body {
     }
     .form-row {
         grid-template-columns: 1fr;
+    }
+}
+
+/* ==============================================================
+   MATCHED SAMPLES, COLLECTED SAMPLES LIST & LIVE DATA FEED
+   ============================================================== */
+.result-display-box.linen { border-color: #34D399; }
+
+.matched-samples-box {
+    background: var(--bg-inset);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 0.75rem 0.9rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+}
+
+.matched-samples-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--text-secondary);
+}
+
+.matched-samples-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.matched-empty {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    padding: 0.25rem 0;
+}
+
+.matched-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--bg-input);
+    border: 1px solid rgba(45, 55, 72, 0.8);
+    border-radius: var(--radius-sm);
+    padding: 0.4rem 0.65rem;
+    font-size: 0.75rem;
+}
+
+.matched-item-left {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.matched-sim {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    color: var(--accent-green);
+}
+
+.fabric-pill {
+    display: inline-block;
+    padding: 0.12rem 0.45rem;
+    border-radius: 9999px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    background: rgba(59, 130, 246, 0.15);
+    color: var(--accent-blue-light);
+    border: 1px solid rgba(59, 130, 246, 0.35);
+}
+
+.capture-list-container {
+    max-height: 200px;
+}
+
+.feed-table-container {
+    max-height: 240px;
+}
+
+.btn-row-del {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.85rem;
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+}
+.btn-row-del:hover {
+    color: var(--accent-red);
+    background: rgba(239, 68, 68, 0.12);
+}
+
+/* ==============================================================
+   UPGRADED UI LAYOUT: AS7265X PILL, BAND LEGEND & 3-ROW GRID
+   ============================================================== */
+.sensor-spec-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.4rem 0.85rem;
+    background: rgba(184, 93, 67, 0.12);
+    border: 1px solid rgba(184, 93, 67, 0.35);
+    border-radius: 9999px;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--accent-cyan);
+}
+
+.spectrum-band-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.65rem;
+}
+
+.band-chip {
+    font-size: 0.68rem;
+    font-family: var(--font-mono);
+    padding: 0.18rem 0.55rem;
+    border-radius: 9999px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-inset);
+    font-weight: 600;
+}
+.band-chip.uv  { color: #6D28D9; border-color: rgba(109, 40, 217, 0.35); }
+.band-chip.vis { color: #047857; border-color: rgba(4, 120, 87, 0.35); }
+.band-chip.red { color: #C2410C; border-color: rgba(194, 65, 12, 0.35); }
+.band-chip.nir { color: #BE123C; border-color: rgba(190, 18, 60, 0.35); }
+
+.mid-grid {
+    display: grid;
+    grid-template-columns: 1.35fr 1fr;
+    gap: 1.25rem;
+}
+
+.capture-studio-grid {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    gap: 1.25rem;
+    align-items: start;
+}
+
+@media (max-width: 1024px) {
+    .mid-grid,
+    .capture-studio-grid {
+        grid-template-columns: 1fr;
+    }
+    .sensor-spec-pill {
+        display: none;
     }
 }

@@ -79,6 +79,13 @@ class MLService:
                 "error": f"Prediction error: {str(e)}"
             }
 
+    def reload_model(self):
+        """Force reload of model artifacts from disk after retraining."""
+        self.predictor = FabricPredictor(model_dir=self.model_dir)
+        self.is_ready = True
+        self.init_error = None
+        print(f"[MLService] Reloaded trained SVM model from {self.model_dir}")
+
     def get_metadata(self) -> Dict[str, Any]:
         if self.is_ready and self.predictor:
             return self.predictor.metadata

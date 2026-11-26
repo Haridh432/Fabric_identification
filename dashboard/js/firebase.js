@@ -64,7 +64,6 @@ class FirebaseService {
 
         console.log(`[FirebaseService] Connecting to Firebase Realtime DB: ${this.databaseUrl}`);
         this.startPolling();
-        this.startDeviceHeartbeatCheck();
     }
 
     disconnect() {
@@ -121,6 +120,25 @@ class FirebaseService {
                         const scan = data[scanKey];
                         
                         if (scan && scan.scan_id) {
+                            // Normalize clean spectrum map ("410nm": 219.5) back into arrays for dashboard
+                            if (!scan.wavelength && scan.spectrum && typeof scan.spectrum === 'object') {
+                                const entries = Object.entries(scan.spectrum)
+                                    .map(([k, v]) => [parseFloat(k.replace(/nm$/i, '')), Number(v)])
+                                    .sort((a, b) => a[0] - b[0]);
+                                scan.wavelength = entries.map(e => e[0]);
+                                scan.intensity = entries.map(e => e[1]);
+                            }
+                            if (!scan.prediction && scan.fabric) {
+                                const confNum = typeof scan.confidence === 'string'
+                                    ? parseFloat(scan.confidence.replace('%', ''))
+                                    : Number(scan.confidence || 0);
+                                scan.prediction = {
+                                    fabric: scan.fabric,
+                                    confidence: confNum,
+                                    model_version: 'svm_v1'
+                                };
+                            }
+
                             if (this.latestScanId !== scan.scan_id || (scan.prediction && scan.prediction.fabric)) {
                                 this.latestScanId = scan.scan_id;
                                 if (this.onNewScanCallback) {

@@ -22,7 +22,11 @@ import time
 import json
 import requests
 import argparse
+from datetime import datetime
 from typing import Dict, Any
+from dotenv import load_dotenv
+
+load_dotenv()
 
 try:
     import serial
@@ -32,7 +36,10 @@ except ImportError:
     sys.exit(1)
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
-FIREBASE_URL = os.getenv("https://fabric-identification-da466-default-rtdb.asia-southeast1.firebasedatabase.app/", "").rstrip("/")
+FIREBASE_URL = os.getenv(
+    "FIREBASE_DATABASE_URL",
+    "https://fabric-identification-da466-default-rtdb.asia-southeast1.firebasedatabase.app"
+).rstrip("/")
 
 
 def auto_detect_esp32_port():
@@ -76,12 +83,34 @@ def forward_real_scan(scan: Dict[str, Any]):
     except Exception as e:
         print(f"[ML BACKEND OFFLINE] Could not reach {BACKEND_URL}: {e}")
 
-    # 2. Push to Firebase Realtime Database
+    # 2. Push clean, human-readable data to Firebase Realtime Database
     if FIREBASE_URL:
         try:
+            readable_time = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
+            peak_wl = wavelengths[intensities.index(max(intensities))] if intensities else None
+            readable_spectrum = {
+                f"{int(wl) if float(wl).is_integer() else wl}nm": round(float(val), 2)
+                for wl, val in zip(wavelengths, intensities)
+            }
+
+            pred_info = scan.get("prediction", {})
+            fabric_name = pred_info.get("fabric") or "Pending"
+            conf_val = pred_info.get("confidence")
+            conf_str = f"{conf_val}%" if conf_val is not None else "0%"
+
+            fb_payload = {
+                "scan_id": scan_id,
+                "fabric": fabric_name,
+                "confidence": conf_str,
+                "peak_wavelength": f"{int(peak_wl)} nm" if peak_wl is not None else "--",
+                "time": readable_time,
+                "status": scan.get("status", "processed"),
+                "spectrum": readable_spectrum
+            }
+
             fb_url = f"{FIREBASE_URL}/fabric_scans/{scan_id}.json"
-            requests.put(fb_url, json=scan, timeout=3)
-            print(f"[FIREBASE OK] Pushed {scan_id} to {fb_url}")
+            requests.put(fb_url, json=fb_payload, timeout=3)
+            print(f"[FIREBASE OK] Saved {scan_id} ({fabric_name}, {conf_str}) to Firebase.")
         except Exception as e:
             print(f"[FIREBASE ERROR] Failed to push to Firebase: {e}")
 

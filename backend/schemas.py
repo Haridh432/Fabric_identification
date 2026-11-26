@@ -2,12 +2,19 @@
 =============================================================================
 FABRIC IDENTIFICATION SYSTEM - PYDANTIC DATA SCHEMAS
 =============================================================================
-Defines validation schemas for API inputs, outputs, and Firebase payloads.
+Defines validation schemas for API inputs, outputs, and dataset training.
 =============================================================================
 """
 
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field, field_validator
+
+
+class MatchedSample(BaseModel):
+    sample_id: str
+    fabric: str
+    physical_sample_id: Optional[str] = ""
+    similarity: float
 
 
 class PredictRequest(BaseModel):
@@ -35,7 +42,21 @@ class PredictResponse(BaseModel):
     fabric: str = Field(..., example="Cotton")
     confidence: float = Field(..., example=96.4)
     model_version: str = Field(..., example="svm_v1")
+    matched_samples: Optional[List[MatchedSample]] = []
     error: Optional[str] = None
+
+
+class CollectedSampleItem(BaseModel):
+    sample_id: str
+    fabric: str
+    physical_sample_id: str
+    wavelength: List[float]
+    intensity: List[float]
+
+
+class TrainDatasetRequest(BaseModel):
+    samples: List[CollectedSampleItem]
+    replace_existing: bool = False
 
 
 class ModelInfoResponse(BaseModel):

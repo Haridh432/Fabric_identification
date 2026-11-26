@@ -167,13 +167,13 @@ class FirebaseSyncService:
             pass
 
     def _update_scan_prediction(self, scan_id: str, prediction: Dict[str, Any]):
+        from datetime import datetime
+        readable_time = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
         patch_payload = {
-            "status": "processed",
-            "prediction": {
-                "fabric": prediction["fabric"],
-                "confidence": prediction["confidence"],
-                "model_version": prediction["model_version"]
-            }
+            "fabric": prediction["fabric"],
+            "confidence": f"{prediction['confidence']}%",
+            "time": readable_time,
+            "status": "processed"
         }
         patch_url = f"{self.database_url}/fabric_scans/{scan_id}.json"
         try:
@@ -194,21 +194,14 @@ class FirebaseSyncService:
 
     def update_backend_heartbeat(self):
         """
-        Report backend status to /device/backend in Firebase.
+        Verify Firebase connectivity without creating extra /device nodes.
         """
         if not self.database_url:
             return
 
-        payload = {
-            "connected": True,
-            "last_seen": int(time.time() * 1000),
-            "status": "online",
-            "model_ready": ml_service.is_ready
-        }
-        url = f"{self.database_url}/device/backend.json"
         try:
-            requests.put(url, json=payload, timeout=5)
-            self.is_connected = True
+            resp = requests.get(f"{self.database_url}/fabric_scans.json?shallow=true", timeout=5)
+            self.is_connected = resp.ok
         except Exception:
             self.is_connected = False
 

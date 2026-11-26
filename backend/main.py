@@ -25,14 +25,19 @@ load_dotenv()
 # Add backend directory to Python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from schemas import PredictRequest, PredictResponse, ModelInfoResponse, HealthResponse
+from schemas import (
+    PredictRequest, PredictResponse, ModelInfoResponse, HealthResponse,
+    TrainDatasetRequest
+)
 from ml_service import ml_service
 from firebase_service import firebase_sync_service
 import time
-from typing import Dict, Any, Optional
+import pandas as pd
+from typing import Dict, Any, Optional, List
 
-# Real-time state store for latest scan and device health
+# Real-time state store for latest scan, live feed, and device health
 latest_scan_record: Optional[Dict[str, Any]] = None
+recent_scans_feed: List[Dict[str, Any]] = []
 device_status_record: Dict[str, Any] = {
     "connected": False,
     "sensor_status": "offline",
@@ -126,9 +131,23 @@ def predict_fabric(request: PredictRequest):
         "prediction": {
             "fabric": result["fabric"],
             "confidence": result["confidence"],
-            "model_version": result["model_version"]
+            "model_version": result["model_version"],
+            "matched_samples": result.get("matched_samples", [])
         }
     }
+
+    # Append to live feed history (keep newest 30)
+    recent_scans_feed.insert(0, {
+        "scan_id": latest_scan_record["scan_id"],
+        "timestamp": latest_scan_record["timestamp"],
+        "fabric": result["fabric"],
+        "confidence": result["confidence"],
+        "peak_wavelength": request.wavelength[request.intensity.index(max(request.intensity))] if request.intensity else None,
+        "max_intensity": round(max(request.intensity), 1) if request.intensity else None,
+        "top_match": result.get("matched_samples", [{}])[0] if result.get("matched_samples") else None
+    })
+    if len(recent_scans_feed) > 30:
+        recent_scans_feed.pop()
 
     # Mark ESP32 and sensor as actively connected
     device_status_record = {
@@ -142,8 +161,88 @@ def predict_fabric(request: PredictRequest):
         scan_id=result["scan_id"],
         fabric=result["fabric"],
         confidence=result["confidence"],
-        model_version=result["model_version"]
+        model_version=result["model_version"],
+        matched_samples=result.get("matched_samples", [])
     )
+
+
+@app.get("/live-feed", tags=["Real-Time Stream"])
+def get_live_feed():
+    """Retrieve the recent live scans feed."""
+    return {"items": recent_scans_feed}
+
+
+@app.get("/dataset/samples", tags=["Dataset & Training"])
+def get_reference_samples():
+    """Retrieve the currently trained reference samples."""
+    if ml_service.is_ready and ml_service.predictor and hasattr(ml_service.predictor, "reference_samples"):
+        refs = [
+            {
+                "sample_id": r["sample_id"],
+                "fabric": r["fabric"],
+                "physical_sample_id": r.get("physical_sample_id", "")
+            }
+            for r in ml_service.predictor.reference_samples
+        ]
+        return {"count": len(refs), "samples": refs}
+    return {"count": 0, "samples": []}
+
+
+@app.post("/dataset/train", tags=["Dataset & Training"])
+def add_and_retrain_model(payload: TrainDatasetRequest):
+    """
+    Append newly collected samples from the dashboard to collected_samples.csv,
+    retrain the SVM model, and hot-reload it into memory.
+    """
+    if not payload.samples:
+        raise HTTPException(status_code=400, detail="No samples provided for training.")
+
+    dataset_path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "ml", "dataset", "collected_samples.csv")
+    )
+    model_dir = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "ml", "models")
+    )
+
+    rows = []
+    for s in payload.samples:
+        row = {
+            "Sample_ID": s.sample_id,
+            "Fabric": s.fabric,
+            "Physical_Sample_ID": s.physical_sample_id
+        }
+        for wl, inten in zip(s.wavelength, s.intensity):
+            wl_key = str(int(wl)) if float(wl).is_integer() else str(wl)
+            row[wl_key] = round(float(inten), 2)
+        rows.append(row)
+
+    new_df = pd.DataFrame(rows)
+
+    if not payload.replace_existing and os.path.exists(dataset_path):
+        existing_df = pd.read_csv(dataset_path)
+        combined_df = pd.concat([existing_df, new_df], ignore_index=True)
+        # Deduplicate by Sample_ID keeping the latest
+        combined_df = combined_df.drop_duplicates(subset=["Sample_ID"], keep="last")
+    else:
+        combined_df = new_df
+
+    os.makedirs(os.path.dirname(dataset_path), exist_ok=True)
+    combined_df.to_csv(dataset_path, index=False)
+
+    # Retrain SVM pipeline
+    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "ml")))
+    from train import train_svm_pipeline
+    _, metadata = train_svm_pipeline(csv_path=dataset_path, output_dir=model_dir)
+
+    # Hot-reload into MLService
+    ml_service.reload_model()
+
+    return {
+        "status": "success",
+        "total_samples": len(combined_df),
+        "classes": metadata.get("classes", []),
+        "accuracy": metadata.get("accuracy", 0.0)
+    }
 
 
 @app.get("/latest-scan", tags=["Real-Time Stream"])
