@@ -71,35 +71,27 @@ ESP32 Dev Module         AS7265x Triad Spectrometer
 
 ---
 
-## 🚀 Quick Start Guide (1-Click Run)
+## 🚀 Quick Start Guide (For Teammates — Sample Collection)
 
 ### 1. Requirements
 - Windows 10/11
-- Python 3.10 or higher
-- Arduino IDE (to flash ESP32 once)
+- **Python 3.10+** installed (with *"Add Python to PATH"* checked)
+- ESP32 + AS7265x sensor (already flashed — just plug into USB!)
 
-### 2. Installation
-Open a terminal in the project folder:
-```bash
-# 1. Create and activate virtual environment
-python -m venv .venv
-.venv\Scripts\activate
-
-# 2. Install dependencies
-pip install -r ml/requirements.txt
-pip install -r backend/requirements.txt
-pip install pyserial
-```
-
-### 3. Launching the System
+### 2. First-Time Run (1-Click Auto Setup)
 Simply double-click:
-👉 **`run_realtime.bat`** (or the shortcut created on your Desktop).
+👉 **`run_realtime.bat`**
 
-**What happens automatically:**
-1. Starts the **Python ML Backend** at `http://127.0.0.1:8000`.
-2. Starts the **Web Dashboard** at `http://127.0.0.1:3000`.
-3. Auto-detects your plugged-in ESP32 on USB and links the sensor bridge.
-4. Opens your web browser to the live dashboard.
+On the first run, it automatically creates `.venv`, installs all dependencies, and opens **`http://127.0.0.1:3000`** in your browser.
+
+### 3. How to Collect & Export Samples
+1. Place the fabric sample flat against the AS7265x sensor.
+2. In the dashboard (**Capture & Labeling**):
+   - Select the **Fabric Class Label** (e.g., `Cotton`, `Silk`, `Linen`, `Nylon`, `Polyester`, or `+ Add Class`).
+   - Check **Physical Fabric Sample ID** (e.g., `SAMPLE_COTTON_01`). *Use a new number (`_02`, `_03`) for each different physical cloth piece!*
+3. Click **▶ Start Capture** and wait for 5–10 scans to appear in **Samples Collected List**.
+4. Click **⏹ Stop Capture**.
+5. Click **📥 Export CSV (Wide / ML)** to download the CSV file and share it with your team.
 
 ---
 

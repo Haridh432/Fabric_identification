@@ -98,6 +98,47 @@ def health_check():
     )
 
 
+@app.post("/scan", tags=["Real-Time Stream"])
+def ingest_raw_scan(request: PredictRequest):
+    """
+    Ingest a raw spectral scan for sample collection (no ML prediction).
+    """
+    global latest_scan_record, device_status_record
+
+    now_ms = int(time.time() * 1000)
+    peak_wl = request.wavelength[request.intensity.index(max(request.intensity))] if request.intensity else None
+    max_int = round(max(request.intensity), 2) if request.intensity else None
+
+    latest_scan_record = {
+        "scan_id": request.scan_id,
+        "timestamp": now_ms,
+        "wavelength": request.wavelength,
+        "intensity": request.intensity,
+        "peak_wavelength": peak_wl,
+        "max_intensity": max_int,
+        "status": "collected"
+    }
+
+    recent_scans_feed.insert(0, {
+        "scan_id": request.scan_id,
+        "timestamp": now_ms,
+        "peak_wavelength": peak_wl,
+        "max_intensity": max_int,
+        "status": "collected"
+    })
+    if len(recent_scans_feed) > 30:
+        recent_scans_feed.pop()
+
+    device_status_record = {
+        "connected": True,
+        "sensor_status": "online",
+        "last_seen": now_ms,
+        "source": "live_hardware"
+    }
+
+    return {"status": "collected", "scan_id": request.scan_id}
+
+
 @app.post("/predict", response_model=PredictResponse, tags=["Inference"])
 def predict_fabric(request: PredictRequest):
     """

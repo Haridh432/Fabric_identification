@@ -1,13 +1,6 @@
 /**
  * ============================================================================
- * FABRIC IDENTIFICATION SYSTEM - DATASET CAPTURE, LIST & RETRAIN SERVICE
- * ============================================================================
- * Handles:
- *  - Recording incoming spectral measurements (deduplicated by scan_id)
- *  - Auto-updating Physical_Sample_ID when Fabric Class changes
- *  - Rendering the live Collected Samples List table with row deletion
- *  - Exporting CSV (Long format & Wide/ML format)
- *  - Sending captured samples to backend (/dataset/train) to retrain SVM live
+ * FABRIC SAMPLE COLLECTION - DATASET CAPTURE, LIST & WIDE CSV EXPORT
  * ============================================================================
  */
 
@@ -17,13 +10,12 @@ class DatasetCaptureManager {
         this.buffer = [];
         this.sampleCounter = 0;
 
-        // UI references
         this.btnStart = document.getElementById('btnStartCapture');
         this.btnStop = document.getElementById('btnStopCapture');
-        this.btnTrain = document.getElementById('btnTrainFromCapture');
         this.btnDlWide = document.getElementById('btnDownloadWideCSV');
         this.btnClear = document.getElementById('btnClearCapture');
         this.badgeCount = document.getElementById('captureCounterBadge');
+        this.listBadge = document.getElementById('collectedListBadge');
         this.selectFabric = document.getElementById('fabricClassSelect');
         this.inputPhysicalSample = document.getElementById('physicalSampleId');
         this.btnAddCustomClass = document.getElementById('btnAddCustomClass');
@@ -36,7 +28,6 @@ class DatasetCaptureManager {
     bindEvents() {
         if (this.btnStart) this.btnStart.addEventListener('click', () => this.startCapture());
         if (this.btnStop) this.btnStop.addEventListener('click', () => this.stopCapture());
-        if (this.btnTrain) this.btnTrain.addEventListener('click', () => this.trainFromCaptured());
         if (this.btnDlWide) this.btnDlWide.addEventListener('click', () => this.downloadWideCSV());
         if (this.btnClear) this.btnClear.addEventListener('click', () => this.clearBuffer());
         if (this.btnAddCustomClass) this.btnAddCustomClass.addEventListener('click', () => this.promptAddCustomClass());
@@ -65,15 +56,11 @@ class DatasetCaptureManager {
         this.btnStart.textContent = '▶ Start Capture';
     }
 
-    /**
-     * Called whenever a scan arrives. Buffers unique scans when capturing is active.
-     */
     recordScan(scan) {
         if (!this.isCapturing) return;
         if (!scan || !scan.wavelength || !scan.intensity) return;
 
         const sid = scan.scan_id || `SCAN_${String(this.sampleCounter + 1).padStart(6, '0')}`;
-        // Prevent duplicate capture of the same scan_id
         if (this.buffer.some(item => item.sample_id === sid)) {
             return;
         }
@@ -82,7 +69,6 @@ class DatasetCaptureManager {
         const fabricLabel = this.selectFabric ? this.selectFabric.value : 'Unknown';
         const physicalId = this.inputPhysicalSample ? this.inputPhysicalSample.value.trim() : `SAMPLE_${fabricLabel.toUpperCase()}_01`;
 
-        // Calculate peak wavelength
         let maxIdx = 0;
         for (let i = 1; i < scan.intensity.length; i++) {
             if (scan.intensity[i] > scan.intensity[maxIdx]) maxIdx = i;
@@ -141,10 +127,8 @@ class DatasetCaptureManager {
 
     updateUIState() {
         const count = this.buffer.length;
-        if (this.badgeCount) {
-            this.badgeCount.textContent = `${count} Samples Captured`;
-        }
-        if (this.btnTrain) this.btnTrain.disabled = count === 0;
+        if (this.badgeCount) this.badgeCount.textContent = `${count} Samples`;
+        if (this.listBadge) this.listBadge.textContent = `${count} Stored`;
         if (this.btnDlWide) this.btnDlWide.disabled = count === 0;
         if (this.btnClear) this.btnClear.disabled = count === 0;
 
@@ -155,50 +139,6 @@ class DatasetCaptureManager {
         if (confirm('Are you sure you want to clear the captured dataset buffer?')) {
             this.buffer = [];
             this.updateUIState();
-        }
-    }
-
-    /**
-     * Send captured samples to backend /dataset/train to update the SVM model live
-     */
-    async trainFromCaptured() {
-        if (this.buffer.length === 0) return;
-
-        const backendUrl = localStorage.getItem('fabric_backend_url') || 'http://localhost:8000';
-        this.btnTrain.disabled = true;
-        const origText = this.btnTrain.textContent;
-        this.btnTrain.textContent = '⏳ Training SVM...';
-
-        try {
-            const payload = {
-                samples: this.buffer.map(item => ({
-                    sample_id: item.sample_id,
-                    fabric: item.fabric,
-                    physical_sample_id: item.physical_sample_id,
-                    wavelength: item.wavelength,
-                    intensity: item.intensity
-                })),
-                replace_existing: false
-            };
-
-            const res = await fetch(`${backendUrl}/dataset/train`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                throw new Error(err.detail || res.statusText);
-            }
-
-            const data = await res.json();
-            alert(`SVM Model Retrained Successfully!\nTotal Training Samples: ${data.total_samples}\nClasses: ${data.classes.join(', ')}\nHoldout Accuracy: ${(data.accuracy * 100).toFixed(1)}%`);
-        } catch (err) {
-            alert(`Training failed: ${err.message}`);
-        } finally {
-            this.btnTrain.disabled = this.buffer.length === 0;
-            this.btnTrain.textContent = origText;
         }
     }
 
@@ -249,5 +189,4 @@ class DatasetCaptureManager {
     }
 }
 
-// Global instance
 window.captureManager = new DatasetCaptureManager();

@@ -1,50 +1,30 @@
 /**
  * ============================================================================
- * FABRIC IDENTIFICATION SYSTEM - MAIN DASHBOARD CONTROLLER (PURE REAL-TIME)
+ * FABRIC SAMPLE COLLECTION - DASHBOARD CONTROLLER (COLLECTION ONLY MODE)
  * ============================================================================
- * Orchestrates real-time hardware data:
- *  - Real-time spectrum visualization from physical ESP32 measurements
- *  - Raw data table rendering & filtering
- *  - Device and service connectivity status checks (ESP32, Sensor, Firebase, ML)
- *  - Integration with Python FastAPI ML Backend for live SVM inference
+ * Streams real-time AS7265x spectral data for visualization, inspection,
+ * sample labeling, and Wide/ML CSV export (no ML prediction displayed).
  * ============================================================================
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-    // ------------------------------------------------------------------------
-    // Elements & State
-    // ------------------------------------------------------------------------
     const statusEsp32El = document.getElementById('statusEsp32');
     const statusSensorEl = document.getElementById('statusSensor');
     const statusFirebaseEl = document.getElementById('statusFirebase');
     const statusMLEl = document.getElementById('statusML');
 
-    const modePillEl = document.getElementById('modePill');
-    const modeTextEl = document.getElementById('modeText');
-
     const tableBodyEl = document.getElementById('rawDataTableBody');
     const tableFilterEl = document.getElementById('tableFilterInput');
     const tableRowCountEl = document.getElementById('tableRowCount');
 
-    const predictedFabricEl = document.getElementById('predictedFabric');
-    const confidenceTextEl = document.getElementById('confidenceText');
-    const confidenceBarEl = document.getElementById('confidenceBar');
-    const resultBoxEl = document.getElementById('resultDisplayBox');
-    const predictionStatusTagEl = document.getElementById('predictionStatus');
-
     const metaScanIdEl = document.getElementById('metaScanId');
     const metaTimestampEl = document.getElementById('metaTimestamp');
-    const metaModelVersionEl = document.getElementById('metaModelVersion');
-    const metaStatusEl = document.getElementById('metaStatus');
+    const metaPeakWlEl = document.getElementById('metaPeakWl');
+    const metaMaxIntEl = document.getElementById('metaMaxInt');
 
-    const matchedListEl = document.getElementById('matchedSamplesList');
-    const matchedCountEl = document.getElementById('matchedCountBadge');
     const liveFeedBodyEl = document.getElementById('liveFeedBody');
     const liveFeedCountEl = document.getElementById('liveFeedCount');
 
-    const btnRequestPrediction = document.getElementById('btnRequestPrediction');
-
-    // Config Modal Elements
     const configModalEl = document.getElementById('configModal');
     const btnConfigModal = document.getElementById('btnConfigModal');
     const btnCloseConfig = document.getElementById('btnCloseConfig');
@@ -53,13 +33,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const cfgFirebaseUrlInput = document.getElementById('cfgFirebaseUrl');
     const cfgBackendUrlInput = document.getElementById('cfgBackendUrl');
 
-    let currentScan = null;
     let currentRawTableData = [];
     let backendUrl = localStorage.getItem('fabric_backend_url') || 'http://localhost:8000';
+    let lastBackendScanId = null;
 
-    // ------------------------------------------------------------------------
-    // Status Helpers
-    // ------------------------------------------------------------------------
     function setStatus(element, state, text) {
         if (!element) return;
         element.classList.remove('online', 'offline', 'standby');
@@ -68,9 +45,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (val) val.textContent = text;
     }
 
-    // ------------------------------------------------------------------------
-    // Raw Table Population & Filtering
-    // ------------------------------------------------------------------------
     function renderTable(wavelengths, intensities) {
         currentRawTableData = [];
         if (!wavelengths || !intensities || wavelengths.length === 0) {
@@ -106,118 +80,58 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const html = filtered.map(d => `
+        tableBodyEl.innerHTML = filtered.map(d => `
             <tr>
                 <td>${d.index}</td>
                 <td><strong>${d.wavelength.toFixed(1)}</strong></td>
-                <td>${Math.round(d.intensity).toLocaleString()}</td>
+                <td>${d.intensity.toFixed(2)}</td>
                 <td>
                     <div style="display:flex; align-items:center; gap:6px;">
                         <span style="width:38px;">${d.percent}%</span>
-                        <div style="flex:1; height:4px; background:rgba(255,255,255,0.08); border-radius:2px; overflow:hidden;">
-                            <div style="width:${d.percent}%; height:100%; background:#38BDF8;"></div>
+                        <div style="flex:1; height:4px; background:var(--border-color); border-radius:2px; overflow:hidden;">
+                            <div style="width:${d.percent}%; height:100%; background:var(--accent-blue);"></div>
                         </div>
                     </div>
                 </td>
             </tr>
         `).join('');
-
-        tableBodyEl.innerHTML = html;
     }
 
     if (tableFilterEl) {
         tableFilterEl.addEventListener('input', applyTableFilter);
     }
 
-    // ------------------------------------------------------------------------
-    // Process Real-Time Incoming Scan from Physical ESP32
-    // ------------------------------------------------------------------------
     function handleIncomingScan(scan) {
-        if (!scan) return;
-        currentScan = scan;
+        if (!scan || !scan.wavelength || !scan.intensity) return;
 
-        // 1. Update Graph with real sensor wavelengths and intensities
-        if (window.spectrumChart && scan.wavelength && scan.intensity) {
+        // 1. Update Live Spectrum Graph
+        if (window.spectrumChart) {
             window.spectrumChart.updateSpectrum(scan.wavelength, scan.intensity);
         }
 
-        // 2. Update Table
+        // 2. Update Raw 18-Ch Table
         renderTable(scan.wavelength, scan.intensity);
 
-        // 3. Inform Dataset Capture Manager
+        // 3. Forward to Dataset Capture Manager
         if (window.captureManager) {
             window.captureManager.recordScan(scan);
         }
 
-        // 4. Update Meta fields
+        // 4. Update Scan Meta Fields
+        let maxIdx = 0;
+        for (let i = 1; i < scan.intensity.length; i++) {
+            if (scan.intensity[i] > scan.intensity[maxIdx]) maxIdx = i;
+        }
+        const peakWl = scan.wavelength[maxIdx];
+        const maxInt = scan.intensity[maxIdx];
+
         if (metaScanIdEl) metaScanIdEl.textContent = scan.scan_id || '--';
         if (metaTimestampEl) {
             const date = scan.timestamp ? new Date(scan.timestamp) : new Date();
             metaTimestampEl.textContent = date.toLocaleTimeString();
         }
-        if (metaStatusEl) metaStatusEl.textContent = scan.status || 'raw';
-
-        // 5. Check if prediction exists already in scan payload
-        if (scan.prediction && scan.prediction.fabric) {
-            displayPrediction(scan.prediction);
-        } else {
-            resetPredictionDisplay(scan.status || 'raw');
-            // Only write prediction back to Firebase if the scan originated as raw
-            if (scan.status === 'raw') {
-                autoTriggerBackendPrediction(scan);
-            }
-        }
-    }
-
-    // ------------------------------------------------------------------------
-    // Prediction Display
-    // ------------------------------------------------------------------------
-    function displayPrediction(pred) {
-        if (!pred || !pred.fabric) return;
-
-        const fabric = pred.fabric;
-        const confidence = typeof pred.confidence === 'number' ? pred.confidence : 0;
-        const version = pred.model_version || 'svm_v1';
-
-        if (predictedFabricEl) predictedFabricEl.textContent = fabric;
-        if (confidenceTextEl) confidenceTextEl.textContent = `${confidence.toFixed(1)}%`;
-        if (confidenceBarEl) confidenceBarEl.style.width = `${Math.min(100, Math.max(0, confidence))}%`;
-        if (metaModelVersionEl) metaModelVersionEl.textContent = version;
-
-        if (predictionStatusTagEl) {
-            predictionStatusTagEl.textContent = 'PROCESSED';
-            predictionStatusTagEl.className = 'status-tag processed';
-        }
-        if (metaStatusEl) metaStatusEl.textContent = 'processed';
-
-        // Apply theme color based on fabric
-        if (resultBoxEl) {
-            resultBoxEl.className = 'result-display-box';
-            resultBoxEl.classList.add(fabric.toLowerCase());
-        }
-
-        // Render matched reference samples
-        renderMatchedSamples(pred.matched_samples || []);
-    }
-
-    function renderMatchedSamples(matches) {
-        if (!matchedListEl || !matchedCountEl) return;
-        matchedCountEl.textContent = `${matches.length} Matches`;
-
-        if (!matches || matches.length === 0) {
-            matchedListEl.innerHTML = '<div class="matched-empty">No reference samples matched yet.</div>';
-            return;
-        }
-
-        matchedListEl.innerHTML = matches.map(m => `
-            <div class="matched-item">
-                <div class="matched-item-left">
-                    <span class="font-mono">${m.sample_id}</span>
-                    <span class="fabric-pill">${m.fabric}</span>
-                </div>
-                <span class="matched-sim">${m.similarity.toFixed(1)}% match</span>
-            </div>
-        `).join('');
+        if (metaPeakWlEl) metaPeakWlEl.textContent = peakWl !== undefined ? `${Math.round(peakWl)} nm` : '--';
+        if (metaMaxIntEl) metaMaxIntEl.textContent = maxInt !== undefined ? maxInt.toFixed(2) : '--';
     }
 
     function renderLiveFeed(items) {
@@ -225,112 +139,24 @@ document.addEventListener('DOMContentLoaded', () => {
         liveFeedCountEl.textContent = `${items.length} Scans`;
 
         if (!items || items.length === 0) {
-            liveFeedBodyEl.innerHTML = '<tr><td colspan="6" class="empty-state">Waiting for live scans...</td></tr>';
+            liveFeedBodyEl.innerHTML = '<tr><td colspan="5" class="empty-state">Waiting for live scans from AS7265x sensor...</td></tr>';
             return;
         }
 
         liveFeedBodyEl.innerHTML = items.map(item => {
             const timeStr = item.timestamp ? new Date(item.timestamp).toLocaleTimeString() : '--';
-            const matchText = item.top_match && item.top_match.sample_id
-                ? `${item.top_match.sample_id} (${item.top_match.fabric}, ${item.top_match.similarity}%)`
-                : '--';
             return `
                 <tr>
                     <td>${timeStr}</td>
                     <td><strong>${item.scan_id}</strong></td>
-                    <td><span class="fabric-pill">${item.fabric}</span></td>
-                    <td>${item.confidence.toFixed(1)}%</td>
                     <td>${item.peak_wavelength ? item.peak_wavelength + ' nm' : '--'}</td>
-                    <td>${matchText}</td>
+                    <td>${item.max_intensity !== null && item.max_intensity !== undefined ? Number(item.max_intensity).toFixed(2) : '--'}</td>
+                    <td><span class="fabric-pill">${item.status || 'collected'}</span></td>
                 </tr>
             `;
         }).join('');
     }
 
-    function resetPredictionDisplay(status) {
-        if (predictedFabricEl) predictedFabricEl.textContent = '--';
-        if (confidenceTextEl) confidenceTextEl.textContent = '0.0%';
-        if (confidenceBarEl) confidenceBarEl.style.width = '0%';
-        if (resultBoxEl) resultBoxEl.className = 'result-display-box';
-
-        if (predictionStatusTagEl) {
-            predictionStatusTagEl.textContent = (status || 'WAITING').toUpperCase();
-            predictionStatusTagEl.className = `status-tag ${status || 'raw'}`;
-        }
-    }
-
-    // ------------------------------------------------------------------------
-    // ML Backend Real-Time Prediction
-    // ------------------------------------------------------------------------
-    async function autoTriggerBackendPrediction(scan) {
-        if (!scan || !scan.wavelength || !scan.intensity) return;
-
-        try {
-            const response = await fetch(`${backendUrl}/predict`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    scan_id: scan.scan_id,
-                    wavelength: scan.wavelength,
-                    intensity: scan.intensity
-                })
-            });
-
-            if (response.ok) {
-                const result = await response.json();
-                displayPrediction(result);
-                if (window.firebaseService) {
-                    window.firebaseService.writePrediction(scan.scan_id, result);
-                }
-            }
-        } catch (err) {
-            // Handled gracefully when backend is offline
-        }
-    }
-
-    if (btnRequestPrediction) {
-        btnRequestPrediction.addEventListener('click', async () => {
-            if (!currentScan) {
-                alert('No real-time scan available yet. Power on ESP32 or connect via USB.');
-                return;
-            }
-
-            btnRequestPrediction.disabled = true;
-            btnRequestPrediction.textContent = '⏳ Processing SVM...';
-
-            try {
-                const response = await fetch(`${backendUrl}/predict`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        scan_id: currentScan.scan_id,
-                        wavelength: currentScan.wavelength,
-                        intensity: currentScan.intensity
-                    })
-                });
-
-                if (response.ok) {
-                    const result = await response.json();
-                    displayPrediction(result);
-                    if (window.firebaseService) {
-                        window.firebaseService.writePrediction(currentScan.scan_id, result);
-                    }
-                } else {
-                    const errData = await response.json().catch(() => ({}));
-                    alert(`Prediction failed: ${errData.detail || response.statusText}`);
-                }
-            } catch (err) {
-                alert(`Could not connect to ML Backend at ${backendUrl}.\nRun: uvicorn backend.main:app --port 8000`);
-            } finally {
-                btnRequestPrediction.disabled = false;
-                btnRequestPrediction.textContent = '🔍 Request SVM Prediction';
-            }
-        });
-    }
-
-    // ------------------------------------------------------------------------
-    // Connectivity & Health Checks
-    // ------------------------------------------------------------------------
     async function checkBackendHealth() {
         try {
             const controller = new AbortController();
@@ -348,14 +174,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // ------------------------------------------------------------------------
-    // Local Backend Real-Time Polling & Device Status
-    // ------------------------------------------------------------------------
-    let lastBackendScanId = null;
-
     async function pollLocalBackendRealtime() {
         try {
-            // 1. Device status check
             const statusRes = await fetch(`${backendUrl}/device-status`);
             if (statusRes.ok) {
                 const dev = await statusRes.json();
@@ -368,7 +188,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            // 2. Real-time scan check
             const scanRes = await fetch(`${backendUrl}/latest-scan`);
             if (scanRes.ok) {
                 const scan = await scanRes.json();
@@ -378,7 +197,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            // 3. Live Data Feed history
             const feedRes = await fetch(`${backendUrl}/live-feed`);
             if (feedRes.ok) {
                 const feedData = await feedRes.json();
@@ -391,21 +209,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // ------------------------------------------------------------------------
-    // Firebase Listeners for Live ESP32
-    // ------------------------------------------------------------------------
     window.firebaseService.onNewScan((scan) => {
         handleIncomingScan(scan);
-    });
-
-    window.firebaseService.onDeviceStatus((status) => {
-        if (status && status.connected) {
-            setStatus(statusEsp32El, 'online', 'Connected');
-            setStatus(statusSensorEl, status.sensor_status === 'online' ? 'online' : 'offline', status.sensor_status === 'online' ? 'Online' : 'Offline');
-        } else {
-            setStatus(statusEsp32El, 'offline', 'Offline');
-            setStatus(statusSensorEl, 'offline', 'Offline');
-        }
     });
 
     window.firebaseService.onConnectionChange((connected, statusText) => {
@@ -417,16 +222,13 @@ document.addEventListener('DOMContentLoaded', () => {
             statusFirebaseEl.title = 'Firebase Realtime Database is connected!';
         } else if (statusText && statusText.includes('401')) {
             setStatus(statusFirebaseEl, 'standby', 'Rules Locked (401)');
-            statusFirebaseEl.title = 'Firebase Permission Denied! In Firebase Console > Realtime Database > Rules, set .read: true, .write: true.';
+            statusFirebaseEl.title = 'Firebase Permission Denied! Set .read: true, .write: true in Firebase Console.';
         } else {
             setStatus(statusFirebaseEl, 'offline', statusText || 'Offline');
             statusFirebaseEl.title = 'Could not reach Firebase database.';
         }
     });
 
-    // ------------------------------------------------------------------------
-    // Settings Modal
-    // ------------------------------------------------------------------------
     function openConfigModal() {
         if (cfgFirebaseUrlInput) cfgFirebaseUrlInput.value = window.firebaseService.databaseUrl || '';
         if (cfgBackendUrlInput) cfgBackendUrlInput.value = backendUrl;
@@ -455,9 +257,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ------------------------------------------------------------------------
-    // Initialization
-    // ------------------------------------------------------------------------
     window.firebaseService.connect();
     checkBackendHealth();
     pollLocalBackendRealtime();

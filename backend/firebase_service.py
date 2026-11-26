@@ -102,12 +102,10 @@ class FirebaseSyncService:
         while self.is_running:
             try:
                 now = time.time()
-                # Update backend heartbeat every 15 seconds
+                # Check Firebase connectivity every 15 seconds (Sample Collection Mode: no auto-prediction)
                 if now - last_heartbeat > 15:
                     self.update_backend_heartbeat()
                     last_heartbeat = now
-
-                self._process_pending_scans()
             except Exception as e:
                 print(f"[FirebaseSync ERROR] Sync cycle failed: {e}")
 

@@ -56,61 +56,52 @@ def auto_detect_esp32_port():
 
 
 def forward_real_scan(scan: Dict[str, Any]):
-    """Send live scan to ML backend and Firebase."""
+    """Send live raw scan to backend and Firebase (Sample Collection Mode - no prediction)."""
     scan_id = scan.get("scan_id", "SCAN_LIVE")
     wavelengths = scan.get("wavelength", [])
     intensities = scan.get("intensity", [])
 
-    print(f"\n[LIVE HARDWARE] >>> Captured {scan_id} ({len(wavelengths)} optical bands)")
+    peak_wl = wavelengths[intensities.index(max(intensities))] if intensities else None
+    max_int = round(max(intensities), 2) if intensities else 0.0
 
-    # 1. Forward to Python ML Backend for immediate SVM classification
+    print(f"\n[LIVE HARDWARE] >>> Captured {scan_id} ({len(wavelengths)} bands | Peak: {int(peak_wl) if peak_wl else '--'} nm | Max: {max_int})")
+
+    # 1. Forward raw scan to Python Backend (/scan)
     try:
-        resp = requests.post(f"{BACKEND_URL}/predict", json={
+        resp = requests.post(f"{BACKEND_URL}/scan", json={
             "scan_id": scan_id,
             "wavelength": wavelengths,
             "intensity": intensities
         }, timeout=3)
 
         if resp.ok:
-            pred = resp.json()
-            fabric = pred["fabric"]
-            conf = pred["confidence"]
-            print(f"[LIVE PREDICTION] \033[92m{fabric}\033[0m | Confidence: \033[96m{conf}%\033[0m | Model: {pred['model_version']}")
-            scan["prediction"] = pred
-            scan["status"] = "processed"
+            print(f"[BACKEND OK] Streamed {scan_id} to dashboard.")
         else:
-            print(f"[ML BACKEND WARNING] Status {resp.status_code}: {resp.text}")
+            print(f"[BACKEND WARNING] Status {resp.status_code}: {resp.text}")
     except Exception as e:
-        print(f"[ML BACKEND OFFLINE] Could not reach {BACKEND_URL}: {e}")
+        print(f"[BACKEND OFFLINE] Could not reach {BACKEND_URL}: {e}")
 
-    # 2. Push clean, human-readable data to Firebase Realtime Database
+    # 2. Push clean raw scan data to Firebase Realtime Database (under /fabric_scans)
     if FIREBASE_URL:
         try:
             readable_time = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
-            peak_wl = wavelengths[intensities.index(max(intensities))] if intensities else None
             readable_spectrum = {
                 f"{int(wl) if float(wl).is_integer() else wl}nm": round(float(val), 2)
                 for wl, val in zip(wavelengths, intensities)
             }
 
-            pred_info = scan.get("prediction", {})
-            fabric_name = pred_info.get("fabric") or "Pending"
-            conf_val = pred_info.get("confidence")
-            conf_str = f"{conf_val}%" if conf_val is not None else "0%"
-
             fb_payload = {
                 "scan_id": scan_id,
-                "fabric": fabric_name,
-                "confidence": conf_str,
                 "peak_wavelength": f"{int(peak_wl)} nm" if peak_wl is not None else "--",
+                "max_intensity": max_int,
                 "time": readable_time,
-                "status": scan.get("status", "processed"),
+                "status": "collected",
                 "spectrum": readable_spectrum
             }
 
             fb_url = f"{FIREBASE_URL}/fabric_scans/{scan_id}.json"
             requests.put(fb_url, json=fb_payload, timeout=3)
-            print(f"[FIREBASE OK] Saved {scan_id} ({fabric_name}, {conf_str}) to Firebase.")
+            print(f"[FIREBASE OK] Saved {scan_id} to Firebase.")
         except Exception as e:
             print(f"[FIREBASE ERROR] Failed to push to Firebase: {e}")
 
