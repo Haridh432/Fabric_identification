@@ -36,9 +36,9 @@ class SpectrumChartManager {
 
         const ctx = this.canvas.getContext('2d');
         const gradient = ctx.createLinearGradient(0, 0, 0, 320);
-        gradient.addColorStop(0, 'rgba(53, 88, 132, 0.28)');
-        gradient.addColorStop(0.65, 'rgba(184, 93, 67, 0.10)');
-        gradient.addColorStop(1, 'rgba(184, 93, 67, 0.0)');
+        gradient.addColorStop(0, 'rgba(13, 148, 136, 0.25)');
+        gradient.addColorStop(0.65, 'rgba(2, 132, 199, 0.08)');
+        gradient.addColorStop(1, 'rgba(2, 132, 199, 0.0)');
 
         const pointColors = AS7265X_DEFAULT_WAVELENGTHS.map(wavelengthToColor);
 
@@ -49,7 +49,7 @@ class SpectrumChartManager {
                 datasets: [{
                     label: 'Spectral Intensity',
                     data: new Array(AS7265X_DEFAULT_WAVELENGTHS.length).fill(null),
-                    borderColor: '#355884',
+                    borderColor: '#0D9488',
                     borderWidth: 2.5,
                     backgroundColor: gradient,
                     fill: true,
@@ -57,7 +57,7 @@ class SpectrumChartManager {
                     pointRadius: 4.5,
                     pointHoverRadius: 7,
                     pointBackgroundColor: pointColors,
-                    pointBorderColor: '#FFFDF9',
+                    pointBorderColor: '#FFFFFF',
                     pointBorderWidth: 1.5
                 }]
             },
@@ -69,10 +69,10 @@ class SpectrumChartManager {
                 plugins: {
                     legend: { display: false },
                     tooltip: {
-                        backgroundColor: 'rgba(43, 37, 32, 0.94)',
-                        titleColor: '#FFFDF9',
-                        bodyColor: '#F4EFE6',
-                        borderColor: '#DDD3C0',
+                        backgroundColor: 'rgba(15, 23, 42, 0.94)',
+                        titleColor: '#FFFFFF',
+                        bodyColor: '#E2E8F0',
+                        borderColor: '#CBD5E1',
                         borderWidth: 1,
                         padding: 10,
                         displayColors: true,
@@ -87,12 +87,12 @@ class SpectrumChartManager {
                         title: {
                             display: true,
                             text: 'AS7265x Wavelength Channels (410 – 940 nm)',
-                            color: '#635A50',
+                            color: '#475569',
                             font: { family: 'Inter', size: 12, weight: '600' }
                         },
-                        grid: { color: 'rgba(221, 211, 192, 0.55)', tickColor: 'transparent' },
+                        grid: { color: 'rgba(203, 213, 225, 0.55)', tickColor: 'transparent' },
                         ticks: {
-                            color: '#635A50',
+                            color: '#475569',
                             font: { family: 'JetBrains Mono', size: 11 },
                             autoSkip: false,
                             maxRotation: 45,
@@ -104,12 +104,12 @@ class SpectrumChartManager {
                         title: {
                             display: true,
                             text: 'Calibrated Intensity (a.u.)',
-                            color: '#635A50',
+                            color: '#475569',
                             font: { family: 'Inter', size: 12, weight: '600' }
                         },
-                        grid: { color: 'rgba(221, 211, 192, 0.55)', tickColor: 'transparent' },
+                        grid: { color: 'rgba(203, 213, 225, 0.55)', tickColor: 'transparent' },
                         ticks: {
-                            color: '#635A50',
+                            color: '#475569',
                             font: { family: 'JetBrains Mono', size: 11 },
                             callback: (val) => val.toLocaleString()
                         }

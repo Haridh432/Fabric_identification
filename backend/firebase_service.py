@@ -2,207 +2,515 @@
 =============================================================================
 FABRIC IDENTIFICATION SYSTEM - FIREBASE SYNC & LISTENER SERVICE
 =============================================================================
-Automatically monitors Firebase Realtime Database for new spectral scans:
-  1. Detects scans with status == "raw"
-  2. Extracts wavelength & intensity arrays
-  3. Invokes MLService (identical preprocessing + SVM prediction)
-  4. Writes prediction result back to the same Firebase scan node
-  5. Updates status to "processed" (or "error" with descriptive message)
-  6. Sends device status heartbeat for backend: /device/backend
-  7. Supports both Firebase Admin SDK (credentials file) AND direct REST API
-     polling/streaming for zero-config local development!
+Monitors Firebase Realtime Database for new raw spectral scans:
+
+1. Detects scans with status == "raw"
+2. Reads wavelength and intensity data
+3. Runs SVM V2 prediction
+4. Writes a simple prediction result to the same scan node
+5. Keeps the Firebase prediction structure simple
+6. Updates backend heartbeat
 =============================================================================
 """
 
 import os
 import time
-import json
 import threading
 import requests
 from typing import Optional, Dict, Any
 
 from ml_service import ml_service
 
-# Optional Firebase Admin SDK import
-try:
-    import firebase_admin
-    from firebase_admin import credentials, db
-    HAS_FIREBASE_ADMIN = True
-except ImportError:
-    HAS_FIREBASE_ADMIN = False
-
-
 class FirebaseSyncService:
+
     def __init__(self):
-        self.database_url = os.getenv("FIREBASE_DATABASE_URL", "").rstrip("/")
-        self.credentials_path = os.getenv("FIREBASE_CREDENTIALS_PATH", "serviceAccountKey.json")
-        
+        self.database_url = os.getenv(
+            "FIREBASE_DATABASE_URL",
+            ""
+        ).rstrip("/")
+
+        self.credentials_path = os.getenv(
+            "FIREBASE_CREDENTIALS_PATH",
+            "serviceAccountKey.json"
+        )
+
         self.is_running = False
         self.is_connected = False
         self.thread: Optional[threading.Thread] = None
-        self.processed_scans = set()  # In-memory deduplication set
-        self.admin_initialized = False
+
+        # Prevent processing the same scan repeatedly
+        self.processed_scans = set()
 
         self.init_firebase()
 
+    # =========================================================================
+    # FIREBASE INITIALIZATION
+    # =========================================================================
+
     def init_firebase(self):
         """
-        Initialize Firebase Admin SDK if credentials file exists,
-        otherwise fallback to resilient REST API mode.
+        Initialize Firebase connection.
+
+        This project uses the Firebase Realtime Database REST API,
+        so no Firebase Admin SDK is required here.
         """
+
         if not self.database_url:
-            print("[FirebaseSync] No FIREBASE_DATABASE_URL configured. Running in standalone API mode.")
+            print(
+                "[FirebaseSync] No FIREBASE_DATABASE_URL configured. "
+                "Running in standalone API mode."
+            )
             return
 
-        if HAS_FIREBASE_ADMIN and os.path.exists(self.credentials_path):
-            try:
-                if not firebase_admin._apps:
-                    cred = credentials.Certificate(self.credentials_path)
-                    firebase_admin.initialize_app(cred, {
-                        'databaseURL': self.database_url
-                    })
-                self.admin_initialized = True
-                self.is_connected = True
-                print(f"[FirebaseSync] Initialized Firebase Admin SDK for: {self.database_url}")
-            except Exception as e:
-                print(f"[FirebaseSync WARNING] Failed to initialize Firebase Admin SDK: {e}. Falling back to REST mode.")
-                self.admin_initialized = False
-        else:
-            print(f"[FirebaseSync] Using Firebase Realtime Database REST API sync at: {self.database_url}")
-            self.is_connected = True
+        print(
+            f"[FirebaseSync] Using Firebase Realtime Database: "
+            f"{self.database_url}"
+        )
+
+        self.is_connected = True
+
+    # =========================================================================
+    # START LISTENER
+    # =========================================================================
 
     def start_listener(self):
         """
-        Start background worker thread to listen for new scans.
+        Start background Firebase listener.
         """
+
         if self.is_running:
             return
 
         if not self.database_url:
-            print("[FirebaseSync] Cannot start listener: FIREBASE_DATABASE_URL is not set.")
+            print(
+                "[FirebaseSync] Cannot start listener: "
+                "FIREBASE_DATABASE_URL is not set."
+            )
             return
 
         self.is_running = True
-        self.thread = threading.Thread(target=self._sync_loop, daemon=True)
+
+        self.thread = threading.Thread(
+            target=self._sync_loop,
+            daemon=True
+        )
+
         self.thread.start()
-        print("[FirebaseSync] Background sync listener thread started.")
+
+        print(
+            "[FirebaseSync] Background sync listener thread started."
+        )
+
+    # =========================================================================
+    # STOP LISTENER
+    # =========================================================================
 
     def stop_listener(self):
+        """
+        Stop Firebase background listener.
+        """
+
         self.is_running = False
+
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=2.0)
-        print("[FirebaseSync] Background sync listener stopped.")
+
+        print(
+            "[FirebaseSync] Background sync listener stopped."
+        )
+
+    # =========================================================================
+    # MAIN SYNC LOOP
+    # =========================================================================
 
     def _sync_loop(self):
         """
-        Continuous loop polling /fabric_scans for raw items and updating device heartbeat.
+        Continuously check Firebase for raw scans.
         """
+
         last_heartbeat = 0
 
         while self.is_running:
-            try:
-                now = time.time()
-                # Check Firebase connectivity every 15 seconds (Sample Collection Mode: no auto-prediction)
-                if now - last_heartbeat > 15:
-                    self.update_backend_heartbeat()
-                    last_heartbeat = now
-            except Exception as e:
-                print(f"[FirebaseSync ERROR] Sync cycle failed: {e}")
 
+            try:
+
+                now = time.time()
+
+                # Update backend heartbeat every 15 seconds
+                if now - last_heartbeat > 15:
+
+                    self.update_backend_heartbeat()
+
+                    last_heartbeat = now
+
+                # Process new scans
+                self._process_pending_scans()
+
+            except Exception as e:
+
+                print(
+                    f"[FirebaseSync ERROR] Sync cycle failed: {e}"
+                )
+
+            # Check Firebase every 2 seconds
             time.sleep(2.0)
+
+    # =========================================================================
+    # PROCESS RAW SCANS
+    # =========================================================================
 
     def _process_pending_scans(self):
         """
-        Fetch scans where status == 'raw' and process them with SVM.
+        Find Firebase scans with:
+
+            status == "raw"
+
+        and run SVM prediction.
         """
+
         if not self.database_url:
             return
 
-        # Fetch recent scans
-        url = f"{self.database_url}/fabric_scans.json?orderBy=\"status\"&equalTo=\"raw\""
+        url = (
+            f"{self.database_url}"
+            f"/fabric_scans.json"
+            f"?orderBy=\"status\""
+            f"&equalTo=\"raw\""
+        )
+
         try:
-            resp = requests.get(url, timeout=5)
-            if not resp.ok:
+
+            response = requests.get(
+                url,
+                timeout=5
+            )
+
+            if not response.ok:
                 return
 
-            scans = resp.json()
+            scans = response.json()
+
             if not scans or not isinstance(scans, dict):
                 return
 
             for scan_key, scan_data in scans.items():
+
                 if not isinstance(scan_data, dict):
                     continue
 
-                scan_id = scan_data.get("scan_id", scan_key)
-                
-                # Check deduplication
+                # Use scan_id if available
+                scan_id = scan_data.get(
+                    "scan_id",
+                    scan_key
+                )
+
+                # Prevent duplicate processing
                 if scan_id in self.processed_scans:
                     continue
 
-                wavelengths = scan_data.get("wavelength")
-                intensities = scan_data.get("intensity")
+                wavelengths = scan_data.get(
+                    "wavelength"
+                )
 
+                intensities = scan_data.get(
+                    "intensity"
+                )
+
+                # Validate spectral data
                 if not wavelengths or not intensities:
-                    print(f"[FirebaseSync] Scan {scan_id} missing spectral arrays. Marking as error.")
-                    self._update_scan_error(scan_id, "Missing wavelength or intensity data")
+
+                    print(
+                        f"[FirebaseSync] Scan {scan_id} "
+                        "missing wavelength/intensity data."
+                    )
+
+                    self._update_scan_error(
+                        scan_id,
+                        "Missing wavelength or intensity data"
+                    )
+
                     self.processed_scans.add(scan_id)
+
                     continue
 
-                print(f"[FirebaseSync] Detected new raw scan {scan_id}. Running SVM prediction...")
-                pred_result = ml_service.predict(scan_id, wavelengths, intensities)
+                print(
+                    f"[FirebaseSync] New raw scan detected: "
+                    f"{scan_id}"
+                )
 
-                if pred_result.get("error"):
-                    print(f"[FirebaseSync] Prediction error for {scan_id}: {pred_result['error']}")
-                    self._update_scan_error(scan_id, pred_result["error"])
-                else:
-                    print(f"[FirebaseSync] Predicted {scan_id} -> {pred_result['fabric']} ({pred_result['confidence']}%)")
-                    self._update_scan_prediction(scan_id, pred_result)
+                print(
+                    f"[FirebaseSync] Running SVM V2 prediction..."
+                )
 
+                try:
+
+                    # ---------------------------------------------------------
+                    # RUN ML PREDICTION
+                    # ---------------------------------------------------------
+
+                    prediction = ml_service.predict_fabric(
+                        scan_id=scan_id,
+                        wavelengths=wavelengths,
+                        intensities=intensities,
+                        timestamp=scan_data.get(
+                            "timestamp"
+                        )
+                    )
+
+                    fabric = prediction["fabric"]
+
+                    confidence = float(
+                        prediction["confidence"]
+                    )
+
+                    print(
+                        f"[FirebaseSync] Prediction: "
+                        f"{fabric} "
+                        f"({confidence * 100:.2f}%)"
+                    )
+
+                    # ---------------------------------------------------------
+                    # WRITE SIMPLE RESULT TO FIREBASE
+                    # ---------------------------------------------------------
+
+                    self._update_scan_prediction(
+                        scan_id,
+                        prediction,
+                        scan_data
+                    )
+
+                except Exception as error:
+
+                    print(
+                        f"[FirebaseSync] Prediction error "
+                        f"for {scan_id}: {error}"
+                    )
+
+                    self._update_scan_error(
+                        scan_id,
+                        str(error)
+                    )
+
+                # Mark as processed
                 self.processed_scans.add(scan_id)
 
-        except requests.exceptions.RequestException as e:
-            # Temporary network / connection issue
+        except requests.exceptions.RequestException:
+            # Temporary Firebase/network issue
             pass
 
-    def _update_scan_prediction(self, scan_id: str, prediction: Dict[str, Any]):
-        from datetime import datetime
-        readable_time = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
-        patch_payload = {
-            "fabric": prediction["fabric"],
-            "confidence": f"{prediction['confidence']}%",
-            "time": readable_time,
-            "status": "processed"
-        }
-        patch_url = f"{self.database_url}/fabric_scans/{scan_id}.json"
-        try:
-            requests.patch(patch_url, json=patch_payload, timeout=5)
-        except Exception as e:
-            print(f"[FirebaseSync ERROR] Failed to write prediction to Firebase for {scan_id}: {e}")
+    # =========================================================================
+    # WRITE PREDICTION
+    # =========================================================================
 
-    def _update_scan_error(self, scan_id: str, error_message: str):
-        patch_payload = {
+    def _update_scan_prediction(
+        self,
+        scan_id: str,
+        prediction: Dict[str, Any],
+        scan_data: Dict[str, Any]
+    ):
+        """
+        Write ONLY the simple prediction result.
+
+        Firebase structure:
+
+        fabric_scans
+        └── SCAN_000001
+            ├── scan_id
+            ├── time
+            ├── predicted_fabric
+            └── confidence
+
+        No spectrum values.
+        No probabilities.
+        No model name.
+        """
+
+        # -------------------------------------------------------------
+        # GET PREDICTION VALUES
+        # -------------------------------------------------------------
+
+        fabric = prediction["fabric"]
+
+        # Convert 0.8245 → 82.45
+        confidence = round(
+            float(prediction["confidence"]) * 100,
+            2
+        )
+
+        # -------------------------------------------------------------
+        # GET TIME
+        # -------------------------------------------------------------
+
+        # If the incoming scan already has a timestamp,
+        # use it. Otherwise use current local time.
+
+        timestamp = scan_data.get("timestamp")
+
+        if timestamp:
+
+            try:
+
+                # Handle milliseconds timestamp
+                if timestamp > 100000000000:
+
+                    prediction_time = time.strftime(
+                        "%Y-%m-%d %H:%M:%S",
+                        time.localtime(
+                            timestamp / 1000
+                        )
+                    )
+
+                else:
+
+                    prediction_time = time.strftime(
+                        "%Y-%m-%d %H:%M:%S",
+                        time.localtime(timestamp)
+                    )
+
+            except Exception:
+
+                prediction_time = time.strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+
+        else:
+
+            prediction_time = time.strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+
+        # -------------------------------------------------------------
+        # SIMPLE FIREBASE PAYLOAD
+        # -------------------------------------------------------------
+
+        payload = {
+
+            "scan_id": scan_id,
+
+            "time": prediction_time,
+
+            "predicted_fabric": fabric,
+
+            "confidence": confidence
+
+        }
+
+        # -------------------------------------------------------------
+        # WRITE TO THE SAME SCAN NODE
+        # -------------------------------------------------------------
+
+        firebase_url = (
+            f"{self.database_url}"
+            f"/fabric_scans/{scan_id}.json"
+        )
+
+        try:
+
+            response = requests.patch(
+                firebase_url,
+                json=payload,
+                timeout=5
+            )
+
+            if response.ok:
+
+                print(
+                    f"[FirebaseSync] Firebase updated: "
+                    f"{scan_id}"
+                )
+
+                print(
+                    f"[FirebaseSync] "
+                    f"Fabric = {fabric}, "
+                    f"Confidence = {confidence}%"
+                )
+
+            else:
+
+                print(
+                    f"[FirebaseSync ERROR] "
+                    f"Firebase returned HTTP "
+                    f"{response.status_code}"
+                )
+
+        except Exception as error:
+
+            print(
+                f"[FirebaseSync ERROR] "
+                f"Failed to write prediction "
+                f"for {scan_id}: {error}"
+            )
+
+    # =========================================================================
+    # ERROR UPDATE
+    # =========================================================================
+
+    def _update_scan_error(
+        self,
+        scan_id: str,
+        error_message: str
+    ):
+        """
+        Mark a scan as error.
+
+        Note:
+        This only adds error information to the scan.
+        """
+
+        payload = {
+
             "status": "error",
+
             "error_message": error_message
+
         }
-        patch_url = f"{self.database_url}/fabric_scans/{scan_id}.json"
+
+        firebase_url = (
+            f"{self.database_url}"
+            f"/fabric_scans/{scan_id}.json"
+        )
+
         try:
-            requests.patch(patch_url, json=patch_payload, timeout=5)
-        except Exception as e:
+
+            requests.patch(
+                firebase_url,
+                json=payload,
+                timeout=5
+            )
+
+        except Exception:
             pass
+
+    # =========================================================================
+    # BACKEND HEARTBEAT
+    # =========================================================================
 
     def update_backend_heartbeat(self):
         """
-        Verify Firebase connectivity without creating extra /device nodes.
+        Check Firebase connectivity.
         """
+
         if not self.database_url:
             return
 
         try:
-            resp = requests.get(f"{self.database_url}/fabric_scans.json?shallow=true", timeout=5)
-            self.is_connected = resp.ok
+
+            response = requests.get(
+                f"{self.database_url}"
+                f"/fabric_scans.json"
+                f"?shallow=true",
+                timeout=5
+            )
+
+            self.is_connected = response.ok
+
         except Exception:
+
             self.is_connected = False
 
 
-# Global instance
+# =============================================================================
+# GLOBAL FIREBASE SERVICE INSTANCE
+# =============================================================================
+
 firebase_sync_service = FirebaseSyncService()

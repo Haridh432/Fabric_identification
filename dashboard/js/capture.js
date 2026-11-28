@@ -6,7 +6,8 @@
 
 class DatasetCaptureManager {
     constructor() {
-        this.isCapturing = false;
+        // Auto-capture incoming scans during scanning time by default
+        this.isCapturing = true;
         this.buffer = [];
         this.sampleCounter = 0;
 
@@ -23,6 +24,7 @@ class DatasetCaptureManager {
 
         this.bindEvents();
         this.syncPhysicalSampleId();
+        this.syncCaptureButtons();
     }
 
     bindEvents() {
@@ -42,18 +44,36 @@ class DatasetCaptureManager {
         this.inputPhysicalSample.value = `SAMPLE_${fab}_01`;
     }
 
+    syncCaptureButtons() {
+        if (this.isCapturing) {
+            if (this.btnStart) {
+                this.btnStart.disabled = true;
+                this.btnStart.textContent = '● Auto-Capturing...';
+            }
+            if (this.btnStop) {
+                this.btnStop.disabled = false;
+                this.btnStop.textContent = '⏸ Pause Capture';
+            }
+        } else {
+            if (this.btnStart) {
+                this.btnStart.disabled = false;
+                this.btnStart.textContent = '▶ Start Capture';
+            }
+            if (this.btnStop) {
+                this.btnStop.disabled = true;
+                this.btnStop.textContent = '⏹ Stop Capture';
+            }
+        }
+    }
+
     startCapture() {
         this.isCapturing = true;
-        this.btnStart.disabled = true;
-        this.btnStop.disabled = false;
-        this.btnStart.textContent = '● Capturing...';
+        this.syncCaptureButtons();
     }
 
     stopCapture() {
         this.isCapturing = false;
-        this.btnStart.disabled = false;
-        this.btnStop.disabled = true;
-        this.btnStart.textContent = '▶ Start Capture';
+        this.syncCaptureButtons();
     }
 
     recordScan(scan) {

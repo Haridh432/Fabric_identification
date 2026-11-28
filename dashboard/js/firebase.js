@@ -130,12 +130,14 @@ class FirebaseService {
                             }
                             if (!scan.prediction && scan.fabric) {
                                 const confNum = typeof scan.confidence === 'string'
-                                    ? parseFloat(scan.confidence.replace('%', ''))
+                                    ? parseFloat(scan.confidence.replace('%', '')) / 100.0
                                     : Number(scan.confidence || 0);
                                 scan.prediction = {
                                     fabric: scan.fabric,
                                     confidence: confNum,
-                                    model_version: 'svm_v1'
+                                    probabilities: scan.probabilities || null,
+                                    model: scan.model || 'fabric_svm_pipeline_v2',
+                                    status: 'predicted'
                                 };
                             }
 
@@ -207,15 +209,11 @@ class FirebaseService {
         if (!this.databaseUrl) return { success: false };
 
         try {
-            const patchPayload = {
-                status: 'processed',
-                prediction: predictionData
-            };
-            const url = `${this.databaseUrl}/fabric_scans/${scanId}.json`;
+            const url = `${this.databaseUrl}/fabric_scans/${scanId}/prediction.json`;
             const response = await fetch(url, {
-                method: 'PATCH',
+                method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(patchPayload)
+                body: JSON.stringify(predictionData)
             });
             return { success: response.ok };
         } catch (err) {

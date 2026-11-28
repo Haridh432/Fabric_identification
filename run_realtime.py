@@ -32,17 +32,13 @@ if not PYTHON_EXE.exists():
 
 
 def check_and_prepare_model():
-    model_path = PROJECT_ROOT / "ml" / "models" / "fabric_svm.pkl"
-    if not model_path.exists():
-        print("[SETUP] Trained SVM model not found. Training model now...")
-        train_script = PROJECT_ROOT / "ml" / "train.py"
-        res = subprocess.run([str(PYTHON_EXE), str(train_script)], cwd=str(PROJECT_ROOT))
-        if res.returncode != 0:
-            print("[SETUP ERROR] Failed to train SVM model.")
-            sys.exit(1)
-        print("[SETUP OK] SVM model trained and saved successfully.\n")
+    v2_path = PROJECT_ROOT / "models" / "fabric_svm_pipeline_v2.pkl"
+    v3_path = PROJECT_ROOT / "models" / "fabric_svm_pipeline_v3.pkl"
+    if not v2_path.exists() and not v3_path.exists():
+        print("[SETUP WARNING] No SVM model found in models/. Backend will run in raw stream mode.")
     else:
-        print("[SETUP OK] Trained SVM model verified in ml/models/.\n")
+        found = [v for v, p in [("V2", v2_path), ("V3", v3_path)] if p.exists()]
+        print(f"[SETUP OK] Verified trained SVM model(s) in models/: {', '.join(found)}\n")
 
 
 def auto_detect_esp32_port():

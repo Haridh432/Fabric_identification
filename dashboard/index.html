@@ -4,14 +4,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fabric Sample Collection | AS7265x Spectroscopy</title>
+    <title>Fabric Identification System | AS7265x Spectroscopy &amp; SVM V2</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
         rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-    <link rel="stylesheet" href="css/style.css?v=4">
+    <link rel="stylesheet" href="css/style.css?v=11">
 </head>
 
 <body>
@@ -26,8 +26,8 @@
                     </svg>
                 </div>
                 <div>
-                    <h1>FABRIC SAMPLE COLLECTION</h1>
-                    <p class="subtitle">AS7265x 18-Channel Spectroscopy (410–940 nm) — Raw Dataset Acquisition</p>
+                    <h1>FABRIC IDENTIFICATION SYSTEM</h1>
+                    <p class="subtitle">AS7265x 18-Channel Spectroscopy (410–940 nm) &amp; Real-Time SVM </p>
                 </div>
             </div>
 
@@ -37,9 +37,9 @@
                 </div>
                 <div class="mode-pill live" id="modePill">
                     <span class="mode-indicator" id="modeIndicator"></span>
-                    <span id="modeText">SAMPLE COLLECTION</span>
+                    <span id="modeText">LIVE HARDWARE</span>
                 </div>
-                <button class="btn btn-icon" id="btnConfigModal" title="Firebase &amp; Backend Configuration">
+                <button class="btn btn-icon" id="btnConfigModal" title="Firebase, Backend &amp; Developer Test Mode">
                     ⚙ Settings
                 </button>
             </div>
@@ -54,7 +54,7 @@
             </div>
             <div class="status-pill" id="statusSensor">
                 <span class="status-dot"></span>
-                <span class="status-label">AS7265x Sensor</span>
+                <span class="status-label">AS7265x</span>
                 <span class="status-val">Checking...</span>
             </div>
             <div class="status-pill" id="statusFirebase">
@@ -64,12 +64,12 @@
             </div>
             <div class="status-pill" id="statusML">
                 <span class="status-dot"></span>
-                <span class="status-label">Backend Stream</span>
+                <span class="status-label">ML Model</span>
                 <span class="status-val">Checking...</span>
             </div>
         </section>
 
-        <!-- Row 1: Live Spectrum + Sample Capture Controls -->
+        <!-- Row 1: Live Spectrum + Live Fabric Identification (SVM V2) -->
         <main class="dashboard-grid">
             <!-- Left Column: Live Spectrum Graph -->
             <section class="card graph-card">
@@ -95,38 +95,81 @@
                 </div>
             </section>
 
-            <!-- Right Column: Sample Capture & Labeling Controls -->
+            <!-- Right Column: LIVE FABRIC IDENTIFICATION (SVM V2) -->
             <section class="card result-card">
                 <div class="card-header">
-                    <h2>CAPTURE &amp; LABELING</h2>
-                    <span class="badge" id="captureCounterBadge">0 Samples</span>
+                    <h2>LIVE FABRIC IDENTIFICATION</h2>
+                    <span class="status-tag" id="mlStatusBadge">ML Status: CHECKING</span>
                 </div>
 
                 <div class="result-body">
-                    <!-- Current Live Scan Info -->
-                    <div class="result-meta-grid">
-                        <div class="meta-item">
-                            <span class="meta-label">Current Scan ID</span>
-                            <span class="meta-value font-mono" id="metaScanId">--</span>
-                        </div>
-                        <div class="meta-item">
-                            <span class="meta-label">Timestamp</span>
-                            <span class="meta-value font-mono" id="metaTimestamp">--</span>
-                        </div>
-                        <div class="meta-item">
-                            <span class="meta-label">Peak Wavelength</span>
-                            <span class="meta-value font-mono" id="metaPeakWl">--</span>
-                        </div>
-                        <div class="meta-item">
-                            <span class="meta-label">Max Intensity</span>
-                            <span class="meta-value font-mono" id="metaMaxInt">--</span>
+                    <!-- Main Result Box -->
+                    <div class="result-display-box" id="resultDisplayBox">
+                        <div class="result-sub">FABRIC DETECTED</div>
+                        <div class="result-fabric-name" id="predictedFabric">--</div>
+                        <div class="confidence-row">
+                            <span class="confidence-pct" id="confidenceText">0.0%</span>
+                            <span class="confidence-tier" id="confidenceTierBadge">WAITING</span>
                         </div>
                     </div>
 
-                    <!-- Labeling Controls -->
-                    <div class="capture-controls">
+                    <!-- Non-blocking Mismatch Warning during Sample Capture -->
+                    <div class="mismatch-warning" id="mismatchWarning" style="display: none;">
+                        <div class="mismatch-title">⚠ Prediction mismatch</div>
+                        <div class="mismatch-details" id="mismatchDetails">
+                            Selected: -- | Predicted: --
+                        </div>
+                    </div>
+
+                    <!-- All 5 Class Probabilities -->
+                    <div class="prob-list-box">
+                        <div class="prob-list-header">
+                            <span>CLASS PROBABILITIES</span>
+                            <span class="font-mono" id="metaModelShort">SVM</span>
+                        </div>
+                        <div id="probabilitiesList" class="prob-list">
+                            <div class="prob-empty">Waiting for 18-channel spectrum...</div>
+                        </div>
+                    </div>
+
+                    <!-- Scan & Model Info Footer -->
+                    <div class="result-meta-grid">
+                        <div class="meta-item">
+                            <span class="meta-label">Scan ID</span>
+                            <span class="meta-value font-mono" id="metaScanId">--</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">Last Prediction</span>
+                            <span class="meta-value font-mono" id="metaTimestamp">--</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">Model</span>
+                            <span class="meta-value font-mono" id="metaModelInfo">SVM (5 Classes)</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">Test / CV Acc</span>
+                            <span class="meta-value font-mono" id="metaModelAcc">86.56% / 86.23%</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Row 2: Capture & Labeling + Raw Sensor Data (18 Ch) -->
+        <section class="mid-grid">
+            <!-- Capture & Labeling Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title-group">
+                        <h2>CAPTURE &amp; LABELING</h2>
+                        <span class="badge" id="captureCounterBadge">0 Samples</span>
+                    </div>
+                    <span class="helper-text" id="captureCompareText">Selected Label: Cotton</span>
+                </div>
+                <div class="capture-controls">
+                    <div class="form-row">
                         <div class="form-group">
-                            <label for="fabricClassSelect">Fabric Class Label</label>
+                            <label for="fabricClassSelect">Fabric Class Label (Ground Truth)</label>
                             <div class="input-with-button">
                                 <select id="fabricClassSelect" class="form-select">
                                     <option value="Cotton">Cotton</option>
@@ -135,47 +178,82 @@
                                     <option value="Polyester">Polyester</option>
                                     <option value="Silk">Silk</option>
                                 </select>
-                                <button class="btn btn-outline-sm" id="btnAddCustomClass" title="Add new fabric class">+ Add Class</button>
+                                <button class="btn btn-outline-sm" id="btnAddCustomClass" title="Add new fabric class">+
+                                    Add Class</button>
                             </div>
                         </div>
 
                         <div class="form-group">
-                            <label for="physicalSampleId" title="Physical piece identifier prevents data leakage during future training">
+                            <label for="physicalSampleId"
+                                title="Physical piece identifier prevents data leakage during training">
                                 Physical Fabric Sample ID
                             </label>
-                            <input type="text" id="physicalSampleId" class="form-input" placeholder="e.g. SAMPLE_COTTON_01" value="SAMPLE_COTTON_01">
+                            <input type="text" id="physicalSampleId" class="form-input"
+                                placeholder="e.g. SAMPLE_COTTON_01" value="SAMPLE_COTTON_01">
                             <small class="helper-text">Auto-updates with Fabric selection</small>
                         </div>
+                    </div>
 
-                        <div class="action-buttons-group" style="margin-top: 0.5rem;">
-                            <button class="btn btn-success" id="btnStartCapture">
-                                ▶ Start Capture
-                            </button>
-                            <button class="btn btn-danger" id="btnStopCapture" disabled>
-                                ⏹ Stop Capture
-                            </button>
-                            <button class="btn btn-primary w-100" id="btnDownloadWideCSV" disabled>
-                                📥 Export CSV (Wide / ML)
-                            </button>
-                            <button class="btn btn-outline w-100" id="btnClearCapture" disabled>
-                                🗑 Clear Buffer
-                            </button>
-                        </div>
+                    <div class="action-buttons-group">
+                        <button class="btn btn-success" id="btnStartCapture">
+                            ▶ Start Capture
+                        </button>
+                        <button class="btn btn-danger" id="btnStopCapture" disabled>
+                            ⏹ Stop Capture
+                        </button>
+                        <button class="btn btn-primary" id="btnDownloadWideCSV" disabled>
+                            📥 Export CSV (Wide / ML)
+                        </button>
+                        <button class="btn btn-outline" id="btnClearCapture" disabled>
+                            🗑 Clear Buffer
+                        </button>
                     </div>
                 </div>
-            </section>
-        </main>
+            </div>
 
-        <!-- Row 2: Collected Samples List + Raw 18-Channel Sensor Data -->
+            <!-- Raw Sensor Data Table Card -->
+            <div class="card table-card">
+                <div class="card-header">
+                    <div class="card-title-group">
+                        <h2>RAW SENSOR DATA (18 CH)</h2>
+                        <span class="badge" id="tableRowCount">0 Bands</span>
+                    </div>
+                    <div class="table-actions">
+                        <input type="text" id="tableFilterInput" class="form-input-sm"
+                            placeholder="Filter wavelength...">
+                    </div>
+                </div>
+                <div class="table-container feed-table-container">
+                    <table class="data-table" id="rawDataTable">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Wavelength (nm)</th>
+                                <th>Intensity</th>
+                                <th>Relative %</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rawDataTableBody">
+                            <tr>
+                                <td colspan="4" class="empty-state">Waiting for real-time spectral data from ESP32
+                                    sensor...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Row 3: Samples Collected List + Recent Predictions (Latest 10) -->
         <section class="mid-grid">
-            <!-- Collected Samples List -->
+            <!-- Samples Collected List -->
             <div class="card">
                 <div class="card-header">
                     <div class="card-title-group">
-                        <h2>SAMPLES COLLECTED LIST</h2>
+                        <h2>SAMPLES COLLECTED</h2>
                         <span class="badge" id="collectedListBadge">0 Stored</span>
                     </div>
-                    <span class="helper-text">Ready for Wide/ML CSV export</span>
+                    <span class="helper-text">Manually labeled ground-truth dataset</span>
                 </div>
                 <div class="table-container feed-table-container">
                     <table class="data-table" id="capturedSamplesTable">
@@ -191,37 +269,36 @@
                         </thead>
                         <tbody id="capturedSamplesBody">
                             <tr>
-                                <td colspan="6" class="empty-state">No samples captured yet. Select a fabric &amp; click "Start Capture".</td>
+                                <td colspan="6" class="empty-state">No samples captured yet. Select a fabric &amp; click
+                                    "Start Capture".</td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
             </div>
 
-            <!-- Raw Sensor Data Table Card -->
-            <div class="card table-card">
+            <!-- Recent Predictions (Latest 10) -->
+            <div class="card">
                 <div class="card-header">
                     <div class="card-title-group">
-                        <h2>RAW SENSOR DATA (18 CH)</h2>
-                        <span class="badge" id="tableRowCount">0 Bands</span>
+                        <h2>RECENT PREDICTIONS</h2>
+                        <span class="badge" id="recentPredCount">0 / 10</span>
                     </div>
-                    <div class="table-actions">
-                        <input type="text" id="tableFilterInput" class="form-input-sm" placeholder="Filter wavelength...">
-                    </div>
+                    <span class="helper-text">Latest 10 SVM classifications</span>
                 </div>
                 <div class="table-container feed-table-container">
-                    <table class="data-table" id="rawDataTable">
+                    <table class="data-table" id="recentPredictionsTable">
                         <thead>
                             <tr>
-                                <th>#</th>
-                                <th>Wavelength (nm)</th>
-                                <th>Intensity</th>
-                                <th>Relative %</th>
+                                <th>Time</th>
+                                <th>Scan ID</th>
+                                <th>Fabric</th>
+                                <th>Confidence</th>
                             </tr>
                         </thead>
-                        <tbody id="rawDataTableBody">
+                        <tbody id="recentPredictionsBody">
                             <tr>
-                                <td colspan="4" class="empty-state">Waiting for real-time spectral data from ESP32 sensor...</td>
+                                <td colspan="4" class="empty-state">No predictions yet.</td>
                             </tr>
                         </tbody>
                     </table>
@@ -229,14 +306,14 @@
             </div>
         </section>
 
-        <!-- Row 3: Live Data Feed (Raw Scans Only) -->
+        <!-- Row 4: Live Data Feed -->
         <section class="card feed-card">
             <div class="card-header">
                 <div class="card-title-group">
                     <h2>LIVE DATA FEED</h2>
                     <span class="badge" id="liveFeedCount">0 Scans</span>
                 </div>
-                <span class="helper-text">Real-time raw spectral stream from AS7265x sensor</span>
+                <span class="helper-text">Real-time scan stream from AS7265x sensor</span>
             </div>
             <div class="table-container feed-table-container">
                 <table class="data-table" id="liveFeedTable">
@@ -246,12 +323,13 @@
                             <th>Scan ID</th>
                             <th>Peak (nm)</th>
                             <th>Max Intensity</th>
+                            <th>Predicted Fabric</th>
                             <th>Status</th>
                         </tr>
                     </thead>
                     <tbody id="liveFeedBody">
                         <tr>
-                            <td colspan="5" class="empty-state">Waiting for live scans from AS7265x sensor...</td>
+                            <td colspan="6" class="empty-state">Waiting for live scans from AS7265x sensor...</td>
                         </tr>
                     </tbody>
                 </table>
@@ -259,7 +337,7 @@
         </section>
     </div>
 
-    <!-- Configuration Modal -->
+    <!-- Configuration & Developer Test Modal -->
     <div class="modal-overlay" id="configModal">
         <div class="modal-card">
             <div class="modal-header">
@@ -267,11 +345,12 @@
                 <button class="btn-close" id="btnCloseConfig">&times;</button>
             </div>
             <div class="modal-body">
-                <p class="modal-hint">Configure Firebase Realtime Database and Python Backend endpoints. Stored locally in your browser.</p>
+                <p class="modal-hint">Configure Firebase Realtime Database and Python Backend endpoints.</p>
 
                 <div class="form-group">
                     <label for="cfgFirebaseUrl">Firebase Realtime Database URL</label>
-                    <input type="url" id="cfgFirebaseUrl" class="form-input" placeholder="https://your-project-id-default-rtdb.firebaseio.com">
+                    <input type="url" id="cfgFirebaseUrl" class="form-input"
+                        placeholder="https://your-project-id-default-rtdb.firebaseio.com">
                 </div>
 
                 <div class="form-group">
@@ -287,10 +366,10 @@
     </div>
 
     <!-- Application Scripts -->
-    <script src="js/firebase.js?v=4"></script>
-    <script src="js/chart.js?v=4"></script>
-    <script src="js/capture.js?v=4"></script>
-    <script src="js/dashboard.js?v=4"></script>
+    <script src="js/firebase.js?v=11"></script>
+    <script src="js/chart.js?v=11"></script>
+    <script src="js/capture.js?v=11"></script>
+    <script src="js/dashboard.js?v=11"></script>
 </body>
 
 </html>

@@ -56,8 +56,9 @@ def auto_detect_esp32_port():
 
 
 def forward_real_scan(scan: Dict[str, Any]):
-    """Send live raw scan to backend and Firebase (Sample Collection Mode - no prediction)."""
+    """Send live 18-channel scan to FastAPI (/predict) and preserve raw + prediction in Firebase."""
     scan_id = scan.get("scan_id", "SCAN_LIVE")
+    timestamp_ms = scan.get("timestamp", int(time.time() * 1000))
     wavelengths = scan.get("wavelength", [])
     intensities = scan.get("intensity", [])
 
@@ -66,22 +67,41 @@ def forward_real_scan(scan: Dict[str, Any]):
 
     print(f"\n[LIVE HARDWARE] >>> Captured {scan_id} ({len(wavelengths)} bands | Peak: {int(peak_wl) if peak_wl else '--'} nm | Max: {max_int})")
 
-    # 1. Forward raw scan to Python Backend (/scan)
+    prediction_data = None
+
+    # 1. Forward to FastAPI /predict for live SVM V2 classification
     try:
-        resp = requests.post(f"{BACKEND_URL}/scan", json={
+        resp = requests.post(f"{BACKEND_URL}/predict", json={
             "scan_id": scan_id,
+            "timestamp": timestamp_ms,
             "wavelength": wavelengths,
             "intensity": intensities
         }, timeout=3)
 
         if resp.ok:
-            print(f"[BACKEND OK] Streamed {scan_id} to dashboard.")
+            pred = resp.json()
+            conf_pct = round(pred["confidence"] * 100, 1)
+            print(f"[SVM V2 PREDICTION] \033[92m{pred['fabric']}\033[0m | Confidence: \033[96m{conf_pct}%\033[0m")
+            prediction_data = {
+                "fabric": pred["fabric"],
+                "confidence": pred["confidence"],
+                "probabilities": pred["probabilities"],
+                "model": pred["model"],
+                "status": "predicted"
+            }
         else:
-            print(f"[BACKEND WARNING] Status {resp.status_code}: {resp.text}")
+            print(f"[ML WARNING] Status {resp.status_code}: {resp.text}")
+            # Fall back to /scan so raw data still reaches dashboard
+            requests.post(f"{BACKEND_URL}/scan", json={
+                "scan_id": scan_id,
+                "timestamp": timestamp_ms,
+                "wavelength": wavelengths,
+                "intensity": intensities
+            }, timeout=3)
     except Exception as e:
         print(f"[BACKEND OFFLINE] Could not reach {BACKEND_URL}: {e}")
 
-    # 2. Push clean raw scan data to Firebase Realtime Database (under /fabric_scans)
+    # 2. Push raw spectrum + prediction sub-node to Firebase under /fabric_scans/{scan_id}
     if FIREBASE_URL:
         try:
             readable_time = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
@@ -95,9 +115,11 @@ def forward_real_scan(scan: Dict[str, Any]):
                 "peak_wavelength": f"{int(peak_wl)} nm" if peak_wl is not None else "--",
                 "max_intensity": max_int,
                 "time": readable_time,
-                "status": "collected",
+                "status": "predicted" if prediction_data else "collected",
                 "spectrum": readable_spectrum
             }
+            if prediction_data:
+                fb_payload["prediction"] = prediction_data
 
             fb_url = f"{FIREBASE_URL}/fabric_scans/{scan_id}.json"
             requests.put(fb_url, json=fb_payload, timeout=3)

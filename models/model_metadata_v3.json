@@ -1,0 +1,38 @@
+{
+    "model": "SVM",
+    "version": "v3",
+    "classes": [
+        "Cotton",
+        "Linen",
+        "Nylon",
+        "Polyester",
+        "Silk"
+    ],
+    "wavelengths": [
+        "410",
+        "435",
+        "460",
+        "485",
+        "510",
+        "535",
+        "560",
+        "585",
+        "610",
+        "645",
+        "680",
+        "705",
+        "730",
+        "760",
+        "810",
+        "860",
+        "900",
+        "940"
+    ],
+    "preprocessing": [
+        "SNV",
+        "StandardScaler"
+    ],
+    "test_accuracy": 0.7837837837837838,
+    "cv_accuracy": 0.81996996996997,
+    "cv_std": 0.025878150778150793
+}
